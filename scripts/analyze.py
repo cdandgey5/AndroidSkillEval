@@ -81,8 +81,11 @@ def reward_of(r):
 
 
 def oracle_status():
+    """task -> True if the reference solution passed; False if it failed or the image didn't build."""
     status = {}
     if ORACLE_JOBS.exists():
+        for marker in ORACLE_JOBS.glob("build_failed__*"):
+            status[marker.name.removeprefix("build_failed__")] = False
         for job in ORACLE_JOBS.iterdir():
             meta = parse_job(job.name) if job.is_dir() else None
             if meta:
@@ -180,7 +183,7 @@ def main():
     lines = ["# Results", "",
              "Score = mean reward per task over its trials. Delta in percentage points (pp), "
              "95% paired bootstrap CI over tasks. W/L = tasks where the second condition scored higher/lower.", "",
-             f"- Tasks dropped because the oracle failed: {', '.join(dropped) or 'none'}",
+             f"- Tasks dropped (image build or oracle failed): {', '.join(dropped) or 'none'}",
              f"- Tasks with no oracle run (check these): {', '.join(no_oracle) or 'none'}",
              f"- Tasks whose checksum changed mid-study: {', '.join(changed) or 'none'}", ""]
     for agent, model in sorted({(r["agent"], r["model"]) for r in rows}):

@@ -14,7 +14,9 @@
 | C2 | Only the relevant skill, and the agent is told to use it (targeted tasks only) |
 
 ## Reproduce
-You need x86_64 Linux with KVM, 32 GB RAM per concurrent trial, Docker, and [uv](https://docs.astral.sh/uv/).
+You need an x86_64 PC running Linux, or Windows 11 with WSL2, with KVM, 32 GB RAM per concurrent trial, about 300 GB free disk, Docker, and [uv](https://docs.astral.sh/uv/). A Mac won't work. No cloud account is needed. Run `scripts/check_machine.sh` to check your PC.
+
+Google's public registry for the task images currently rejects pulls, so the run script builds each image locally (`scripts/build_image.sh`) from Google's archived builder. See [PLAN.md](PLAN.md) section 6.
 
 ```bash
 uv tool install harbor

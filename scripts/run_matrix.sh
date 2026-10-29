@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Run the with/without-skills matrix on Android Bench 1.0 via Harbor.
 #
-# Per task: oracle first (drop the task if the reference fix fails on this
-# machine), then every agent condition, then delete the task image. Each image
-# is pulled once and the disk never holds more than one task's image.
+# Per task: get the image (local, else pull, else build it locally with
+# scripts/build_image.sh), run the oracle (drop the task if the reference fix
+# fails on this machine), run every agent condition, then delete the task image.
+# Each image is fetched once and the disk holds one task image at a time.
 #
 # One Harbor job per (agent config, condition, task). A job counts as done only
 # when its result.json has finished_at set (Harbor writes result.json when a job
@@ -19,7 +20,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PHASE="${1:?usage: run_matrix.sh pilot|targeted|core}"
 DATASET="${DATASET:-android-bench/android-bench}"
 ORACLE_JOBS="$ROOT/jobs/oracle"
-N_CONCURRENT="${N_CONCURRENT:-3}"  # each trial asks for 8 CPU / 32 GB; 3 fit on n2-standard-32
+N_CONCURRENT="${N_CONCURRENT:-3}"  # each trial asks for 8 CPU / 32 GB; scripts/check_machine.sh suggests a value
+# Extra flags for every harbor run, e.g. "--cpus ignore" on a PC with fewer than 8 CPU threads.
+read -r -a EXTRA_HARBOR_ARGS <<<"${EXTRA_HARBOR_ARGS:-}"
+REGISTRY="us-central1-docker.pkg.dev/android-bench-public/android-bench-tasks"
 K_CORE="${K_CORE:-3}"
 K_TARGETED="${K_TARGETED:-5}"
 # Optional agent-timeout cap, decided in the pilot (default task timeout is 20,000 s).
@@ -36,7 +40,7 @@ PILOT_TASKS=(  # 3 tier-1 targeted + 7 non-targeted of mixed size
   mohamedrejeb__compose-rich-editor-pr_335 pocketcasts-room-3
 )
 
-COMMON_ARGS=(-r 2 -n "$N_CONCURRENT" -q -y)
+COMMON_ARGS=(-r 2 -n "$N_CONCURRENT" -q -y "${EXTRA_HARBOR_ARGS[@]}")
 
 mapfile -t TARGETED < <(python3 -c "import json;[print(t['task']) for t in json.load(open('$ROOT/config/targeted_tasks.json'))['tasks']]")
 is_targeted() { [[ " ${TARGETED[*]} " == *" $1 "* ]]; }
@@ -54,8 +58,10 @@ sys.exit(0 if any(((r.get("verifier_result") or {}).get("rewards") or {}).get("r
 PY
 }
 
+oracle_dir() { echo "$ORACLE_JOBS/oracle__none__OR__${1}__k1"; }
+
 run_oracle() {  # returns 0 if the reference solution passes on this machine
-  local task="$1" dir="$ORACLE_JOBS/oracle__none__OR__${1}__k1"
+  local task="$1" dir; dir="$(oracle_dir "$1")"
   if ! job_done "$dir"; then
     rm -rf "$dir"
     harbor run -d "$DATASET" -i "*$task" -a oracle -k 1 -o "$ORACLE_JOBS" --job-name "$(basename "$dir")" \
@@ -64,11 +70,17 @@ run_oracle() {  # returns 0 if the reference solution passes on this machine
   oracle_passed "$dir"
 }
 
+job_name() {  # job_name <agent_cfg> <condition> <task> <k>
+  local agent model effort version
+  IFS='|' read -r agent model effort version <<<"$1"
+  echo "${agent}__${model//\//-}${effort:+-$effort}__${2}__${3}__k${4}"
+}
+
 run_one() {  # run_one <agent_cfg> <condition> <task> <k>
   local cfg="$1" cond="$2" task="$3" k="$4"
   local agent model effort version
   IFS='|' read -r agent model effort version <<<"$cfg"
-  local name="${agent}__${model//\//-}${effort:+-$effort}__${cond}__${task}__k${k}"
+  local name; name="$(job_name "$cfg" "$cond" "$task" "$k")"
   if job_done "$JOBS/$name"; then echo "done  $name"; return; fi
   rm -rf "${JOBS:?}/$name"
 
@@ -89,13 +101,39 @@ run_one() {  # run_one <agent_cfg> <condition> <task> <k>
     || echo "FAIL  $name (re-run the script to retry)"
 }
 
-prune_task_image() {
-  docker images --format '{{.Repository}}:{{.Tag}}' | grep -F "/$1:" | xargs -r docker rmi -f >/dev/null || true
+ensure_image() {  # returns 0 once the task image is available locally under its registry name
+  local task="$1" img="$REGISTRY/$1:latest" marker="$ORACLE_JOBS/build_failed__$1"
+  [[ -f "$marker" ]] && return 1
+  docker image inspect "$img" >/dev/null 2>&1 && return 0
+  docker pull -q "$img" >/dev/null 2>&1 && return 0
+  echo "build $task (registry pull failed; building locally)"
+  if "$ROOT/scripts/build_image.sh" "$task" >"$ORACLE_JOBS/build__$task.log" 2>&1; then return 0; fi
+  touch "$marker"  # don't retry a failed build on every re-run; delete the marker to retry
+  return 1
+}
+
+prune_task_image() {  # keep the shared SDK and per-repo base images; drop the task image
+  docker rmi -f "$REGISTRY/$1:latest" "$1" >/dev/null 2>&1 || true
   docker image prune -f >/dev/null || true
 }
 
 run_task_block() {  # run_task_block <task> <k> <conditions...>
   local task="$1" k="$2"; shift 2
+  # Decide from finished jobs alone first, so a re-run never fetches or rebuilds an image it won't use.
+  if job_done "$(oracle_dir "$task")" && ! oracle_passed "$(oracle_dir "$task")"; then
+    echo "drop  $task (oracle failed on this machine)"; return
+  fi
+  local pending=0 cfg cond
+  job_done "$(oracle_dir "$task")" || pending=1
+  for cfg in "${AGENT_CONFIGS[@]}"; do
+    for cond in "$@"; do job_done "$JOBS/$(job_name "$cfg" "$cond" "$task" "$k")" || pending=1; done
+  done
+  if (( ! pending )); then echo "done  $task"; return; fi
+
+  if ! ensure_image "$task"; then
+    echo "drop  $task (image build failed; see $ORACLE_JOBS/build__$task.log)"
+    return
+  fi
   if ! run_oracle "$task"; then
     echo "drop  $task (oracle failed on this machine)"
     prune_task_image "$task"

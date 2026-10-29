@@ -1,6 +1,6 @@
 # AndroidSkillEval: Do Google's official Android skills improve agent results?
 
-Plan written 2026-10-29 and rechecked the same day (see the revision log at the end). Facts were checked against primary sources, and Harbor behavior was checked against its source code (`harbor` 0.25.0).
+Plan written 2026-10-29 and rechecked twice the same day (see the revision log at the end). Facts were checked against primary sources, and Harbor behavior was checked against its source code (`harbor` 0.25.0).
 
 ---
 
@@ -17,7 +17,9 @@ Plan written 2026-10-29 and rechecked the same day (see the revision log at the 
 
 **Be clear about what post 1 can prove.** With 9 targeted tasks, the 95% CI is about ±20–30 percentage points (pp). Post 1 can firmly answer questions 1 and 3, plus cost. Question 2 will only be directional. Phase 5 (about 10 custom skill-domain tasks) is what answers question 2 properly, so plan for a part 2.
 
-**This works without a Mac.** Android Bench needs x86_64 Linux with KVM, 8 CPU and 32 GB per trial. Rent a cloud VM.
+**You can run it on your own PC (no Google Cloud needed),** if the PC is x86_64 Linux or Windows 11 with KVM, has 32 GB+ RAM and about 300 GB free disk. Macs can't run it, so use a cloud VM instead (section 6).
+
+**Current blocker:** Google's public registry for the task images rejects all pulls (their project's billing is off). The scripts work around it by building each image locally from Google's archived builder (section 6.0).
 
 ---
 
@@ -27,7 +29,7 @@ Plan written 2026-10-29 and rechecked the same day (see the revision log at the 
 |---|---|
 | **What** | An open, pre-registered, reproducible benchmark of Google's `android/skills` on Android Bench 1.0 (100 public tasks) using Harbor, the harness Google now runs Android Bench on. You publish the numbers, code and raw results. |
 | **Why** | Google released the skills in April 2026 (36 now) and moved Android Bench to Harbor in July 2026. Harbor injects skills with one flag, but nobody has published numbers. Every Android dev using Claude Code or Codex is deciding right now whether to run `android skills add --all`. |
-| **How** | One rented Linux VM with KVM, the Harbor CLI, about 700 agent trials plus 100 oracle trials, and a pre-registered analysis. About 3 weeks part-time to the first post. |
+| **How** | Your own Linux or Windows 11 PC with KVM (or a rented VM), the Harbor CLI, about 700 agent trials plus 100 oracle trials, and a pre-registered analysis. About 3 weeks part-time to the first post. |
 | **Risks** | Null result (mitigated by the slice design), ceiling effects (model choice), infra pain (day-1 oracle check), cost overrun (pilot-based caps), small targeted slice (honest CIs plus part 2). Full list in section 10. |
 
 ---
@@ -43,7 +45,7 @@ Plan written 2026-10-29 and rechecked the same day (see the revision log at the 
 - **Every task's `task.toml` (all 100 identical):**
   - 8 CPU, 32 GB RAM, 120 GB storage, and `/dev/kvm` (emulator API 31–36)
   - agent timeout **20,000 s (5.5 h)** and verifier timeout 7,200 s
-  - prebuilt image at `us-central1-docker.pkg.dev/android-bench-public/...`, so there's no local build
+  - prebuilt image at `us-central1-docker.pkg.dev/android-bench-public/...`. **As of 2026-10-29 that registry rejects all pulls** (section 6.0). Every image can be rebuilt from the archived repo's builder.
 - The old GitHub repo `android-bench/android-bench` was archived on 2026-07-08. Harbor is the supported path.
 
 **Android skills (`github.com/android/skills`, Apache 2.0)**
@@ -156,12 +158,82 @@ The list is frozen before any run. Don't edit it after seeing results.
 
 ## 6. Infrastructure and budget
 
-### Recommended: a GCP VM in `us-central1`, on Spot if nested virtualization works there
-The task images live in `us-central1`, so a VM in the same region pulls them fastest. Toronto is closer to Brampton, but proximity doesn't matter for a batch job.
+### 6.0 Blocker found 2026-10-29: Google's image registry rejects all pulls
+- **What fails:** every pull from `us-central1-docker.pkg.dev/android-bench-public/android-bench-tasks` fails with *"This API method requires billing to be enabled"* on Google's project #895445738779. A control image from another public Google registry pulls fine, so the problem is their project, not your setup. **Your own Google Cloud account doesn't fix it.**
+- **Workaround (built into the scripts):** `scripts/build_image.sh` rebuilds each image from the archived `android-bench/android-bench` repo (commit `65a86bf`), the same builder Google used.
+  - It builds Ubuntu 22.04 plus the Android SDK and emulators, then a base image per app repo, then the task image.
+  - It tags the result with the registry name, and Harbor uses the local image without pulling.
+  - The Harbor task Dockerfiles are identical to the archived ones, and all 100 tasks are in the archived repo.
+- **What `run_matrix.sh` does per task:** use the local image if there is one; otherwise try a pull (in case Google fixes billing); otherwise build. If the build fails, the task is dropped and reported, like an oracle failure.
+- **Cost of the workaround:**
+  - About 30–60 min once for the shared SDK image, then about 10–30 min per task.
+  - More downloads: the SDK, repo clones and Gradle dependencies.
+  - Builds pull dependencies as they exist today, so a few old tasks may no longer build or pass. The oracle step catches those.
+- **Report it** (2 minutes, and it helps everyone) as an issue on `android-bench/community-dataset`, for example: *"Pulling Android Bench 1.0 task images from us-central1-docker.pkg.dev/android-bench-public fails with 'requires billing to be enabled' on project 895445738779 (checked 2026-10-29). The Harbor dataset is unusable without them. Could billing be re-enabled or the images mirrored?"*
+
+### 6.1 Can this run on your own computer? Usually yes, and it's cheaper
+You don't need Google Cloud. I first picked it only because a cloud VM easily meets the hardware needs and sat next to Google's (now broken) image registry.
+
+**Requirements** (check them with `scripts/check_machine.sh`):
+
+| Need | Why | Minimum | Better |
+|---|---|---|---|
+| x86_64 Intel/AMD CPU with VT-x/AMD-V enabled in BIOS | The Android emulator needs KVM | any recent desktop/laptop CPU | |
+| Linux, or **Windows 11** + WSL2 | KVM. WSL2 exposes it on Windows 11 only. | | native Linux (fewest surprises) |
+| RAM | Each trial is allowed 32 GB (Gradle, emulator, agent) | 32 GB (1 trial at a time) | 64 GB (2 at a time), 128 GB (3) |
+| CPU threads | Each trial is allowed 8 | 8. With fewer, set `EXTRA_HARBOR_ARGS="--cpus ignore"` and expect slowness. | 16–24 |
+| Free SSD | Shared SDK image + repo bases + one task image + build cache | ~300 GB | 500 GB+ |
+| Internet | SDK, repos, Gradle deps, agent installs | Roughly a few hundred GB over the study. Check your plan's cap. | unlimited plan |
+
+**Won't work:** any Mac (no KVM for x86 emulators; Android Bench's own docs say so), Windows 10, or a PC with less than about 30 GB RAM.
+
+**Native Linux setup:**
+```bash
+curl -fsSL https://get.docker.com | sudo sh          # Docker + the compose plugin Harbor needs
+sudo apt-get install -y git python3 cpu-checker tmux
+sudo usermod -aG docker,kvm $USER                    # then log out and back in
+curl -LsSf https://astral.sh/uv/install.sh | sh && uv tool install harbor
+git clone https://github.com/cdandgey5/AndroidSkillEval && cd AndroidSkillEval
+scripts/check_machine.sh                             # prints a verdict and a suggested N_CONCURRENT
+```
+
+**Windows 11 setup (WSL2):**
+1. Turn on virtualization in BIOS (Intel VT-x or AMD SVM). Then, in PowerShell, run `wsl --install -d Ubuntu-24.04`.
+2. Create `%UserProfile%\.wslconfig`. By default WSL2 gets only **50% of your RAM**:
+   ```ini
+   [wsl2]
+   memory=56GB          # total RAM minus ~8 GB for Windows
+   processors=16        # your logical processor count
+   swap=8GB
+   ```
+   Then run `wsl --shutdown` and reopen Ubuntu. Nested virtualization (KVM) is on by default on Windows 11.
+3. Inside Ubuntu, run the native Linux setup above. Use Docker Engine installed **inside** Ubuntu, not Docker Desktop: Docker Desktop runs containers in its own VM, and passing `/dev/kvm` through it is unreliable.
+4. **Disk:** WSL stores Linux files in a virtual disk on `C:`. If `C:` lacks about 300 GB free, move the distro to a bigger drive with `wsl --export` / `wsl --import` before you start.
+5. Keep the PC awake for the whole run:
+   - Set Windows sleep to "Never" while plugged in.
+   - Pause Windows Update for the run's duration, since a forced restart stops the run. (It resumes safely, but you lose hours.)
+
+**How long it takes locally** (rough; the pilot measures real numbers):
+
+| Machine | Concurrent trials | Full study, running nonstop |
+|---|---|---|
+| 32 GB RAM, 8+ threads | 1 | ~17 days (~13 with k=2 on non-targeted tasks) |
+| 64 GB RAM, 16+ threads | 2 | ~10–11 days |
+| 128 GB RAM, 24+ threads | 3 | ~8 days |
+
+These assume about 30 min per trial, about 25 min per oracle and about 20 min per image build.
+
+**Recommendation:**
+- **If `check_machine.sh` says OK, run it on your PC.** It saves about $75–325 of cloud compute, and electricity is about $10–20 at Ontario rates.
+- **If you're on a Mac, or have under 32 GB of RAM, use 6.2.**
+- **Don't buy hardware for this.** A month of cloud VM time is cheaper than a RAM upgrade.
+
+### 6.2 Alternative: a GCP VM in `us-central1`
+Use this if your PC doesn't qualify, or you want the shortest wall-clock time.
 
 **Before you create the VM:**
 - **Upgrade the account to paid.** You keep the $300 credit. Google's trial terms cap trial accounts at 8 concurrent vCPUs.
-- **Check quota.** In IAM & Admin → Quotas, confirm `us-central1` allows 32 N2 CPUs, and 32 preemptible CPUs if you use Spot. New projects often start lower. Request an increase if needed, since approval can take hours to a day.
+- **Check quota.** In IAM & Admin → Quotas, confirm `us-central1` allows 32 N2 CPUs, and 32 preemptible CPUs if you use Spot. New projects often start lower. Request an increase early, since approval can take hours to a day.
 - Google's nested virtualization docs list E2, AMD (except N4D) and Arm as unsupported. They don't mention Spot, so `kvm-ok` on day 1 is the real test. If it fails on Spot, recreate the VM without the two Spot flags.
 
 ```bash
@@ -172,41 +244,31 @@ gcloud compute instances create android-bench \
   --provisioning-model=SPOT --instance-termination-action=STOP \
   --boot-disk-size=750GB --boot-disk-type=pd-balanced \
   --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud
-
-# On the VM:
-curl -fsSL https://get.docker.com | sudo sh          # Docker + the compose plugin Harbor needs
-sudo apt-get install -y git python3 cpu-checker tmux
-sudo usermod -aG docker,kvm $USER                    # then log out and back in
-kvm-ok                                               # must say "KVM acceleration can be used"
-curl -LsSf https://astral.sh/uv/install.sh | sh && uv tool install harbor
-git clone https://github.com/cdandgey5/AndroidSkillEval && cd AndroidSkillEval
-harbor run -d android-bench/android-bench -i "*airbnb__lottie-android-pr_2427" -a oracle   # infra check
+# Then on the VM: the "Native Linux setup" block in 6.1.
 ```
 
-- **Spec:** n2-standard-32 has 32 vCPU and 128 GB. That fits 3 concurrent trials at 8 CPU / 32 GB each, with room for the host, so `N_CONCURRENT=3`.
-- **Restarts are safe.** Each (agent, condition, task) is its own Harbor job, and a job only counts as done when Harbor sets `finished_at`. After a preemption, start the VM and re-run the script. Interrupted trials re-run, which costs a little extra API spend.
-- **Images:** for each task the script runs the oracle, then all conditions, then deletes the image. Each image is pulled once, and only one task's image is on disk at a time.
-- **Alternative:** a Hetzner or OVH bare-metal box (16+ cores, 128 GB), which is cheaper by the month. Only worth it if you keep running evals after part 2.
-- **Check first:** whether `harbor run --launch` (Harbor Hub hosted runs) supports this dataset and what it costs. If it does, you can skip the VM entirely.
+- **Spec:** n2-standard-32 has 32 vCPU and 128 GB, so 3 concurrent trials (`N_CONCURRENT=3`).
+- **Restarts are safe** on either option. Each (agent, condition, task) is its own Harbor job, and it only counts as done when Harbor sets `finished_at`. After a preemption or reboot, re-run the same command. Finished tasks are skipped without rebuilding their images, and interrupted trials re-run, which costs a little extra API spend.
+- **Images:** one task image on disk at a time. The shared SDK image and the per-repo base images are kept, because later tasks reuse them.
+- **Check first:** whether `harbor run --launch` (Harbor Hub hosted runs) supports this dataset and what it costs. It would also need the images.
 
 ### Budget for post 1 (one agent config)
 
-| Item | Count | Estimate |
-|---|---|---|
-| Pilot (10 tasks × C0/C1 × k=1, plus their oracles) | 20 agent trials | small |
-| Oracle (all 100 tasks, k=1) | 100 trials | compute only |
-| Targeted: 9 tasks × C0/C1/C2 × k=5 | 135 trials | |
-| Non-targeted: 91 tasks × C0/C1 × k=3 | 546 trials | |
-| **Agent trials total** | **~700** | |
-| VM time (assumes ~35 min per 3-trial job and ~25 min per oracle; the pilot replaces these guesses) | ~190 h, about 8 days | ~$290 on-demand (about $1.55/h); Spot is typically 60–90% less |
-| Disk (750 GB pd-balanced, about 2 weeks) | | ~$35 |
-| API (assumed $0.20–0.80 per trial with a Haiku-class model in Claude Code; the pilot measures it) | ~700 | ~$140–560 |
-| **Total** | | **~$220–900** (Spot vs on-demand, cheap vs expensive model) |
+| Item | Count | Own PC | Cloud VM |
+|---|---|---|---|
+| Pilot (10 tasks × C0/C1 × k=1) | 20 agent trials | | |
+| Image builds + oracle (100 tasks) | 100 each | | |
+| Targeted: 9 tasks × C0/C1/C2 × k=5 | 135 trials | | |
+| Non-targeted: 91 tasks × C0/C1 × k=3 | 546 trials | | |
+| Machine time | | 8–17 days, depending on RAM | ~9 days (~220 h) |
+| Machine cost | | ~$10–20 electricity | ~$290 on-demand (about $1.55/h); Spot is typically 60–90% less. Disk ~$35. |
+| API (assumed $0.20–0.80 per trial with a Haiku-class model in Claude Code; the pilot measures it) | ~700 | ~$140–560 | ~$140–560 |
+| **Total** | | **~$150–580** | **~$220–900** |
 
 **Cost guards:**
-- Set hard spend caps in the provider console before the core run.
-- If API cost exceeds $0.80 per trial, cut non-targeted trials to k=2, which saves about a third.
-- **Runaway trials:** the default agent timeout is 5.5 h. If the pilot shows trials running past 2 h, set `AGENT_TIMEOUT_MULT=0.36` (2 h) for every condition. Record it in `PREREGISTRATION.md` before the core run.
+- Set hard spend caps in the provider console before the main runs.
+- If API cost exceeds $0.80 per trial, cut non-targeted trials to k=2, which saves about a third of API cost and time.
+- **Runaway trials:** the default agent timeout is 5.5 h. If the pilot shows trials running past 2 h, set `AGENT_TIMEOUT_MULT=0.36` (2 h) for every condition. Record it in `PREREGISTRATION.md` before the main runs.
 
 ---
 
@@ -216,9 +278,11 @@ Each phase has an exit gate. Don't start the next phase until it passes.
 
 ### Phase 0: Setup and pre-registration (days 1–2)
 - [ ] Review `PREREGISTRATION.md` and `config/targeted_tasks.json`, and commit any edits **before** any agent run.
-- [ ] Upgrade billing, check quota, create the VM (section 6), confirm `kvm-ok`, and install Harbor.
-- [ ] Run the oracle on one task (last line of the setup block).
-- **Gate:** the oracle passes on that task.
+- [ ] Set up your PC (section 6.1) or a VM (6.2), then run `scripts/check_machine.sh` until it says OK.
+- [ ] Report the registry outage (section 6.0).
+- [ ] Build one image and run its oracle. The first build includes the shared SDK image, about 1 hour:
+  `scripts/build_image.sh airbnb__lottie-android-pr_2427 && harbor run -d android-bench/android-bench -i "*airbnb__lottie-android-pr_2427" -a oracle`
+- **Gate:** the oracle passes on that task. That proves KVM, Docker, the local build and Harbor all work.
 
 ### Phase 1: Pilot (days 3–4)
 - [ ] Confirm the exact model id with your provider, and set API keys and spend caps.
@@ -232,10 +296,10 @@ Each phase has an exit gate. Don't start the next phase until it passes.
 - [ ] Record the model, version and any timeout cap in `PREREGISTRATION.md`, and commit.
 - **Gate:** the model is in the 40–75% band, cost fits the budget, detection works, and the pilot oracles pass.
 
-### Phase 2: Main runs (days 5–13, mostly unattended in `tmux`)
+### Phase 2: Main runs (days 5–13 on a VM or a 128 GB PC, up to day ~22 on a 32 GB PC; mostly unattended in `tmux`)
 - [ ] `scripts/run_matrix.sh targeted` first. It takes about 1.5 days and gives you the most interesting numbers early.
 - [ ] Then `scripts/run_matrix.sh core`. It skips the targeted tasks that are already done.
-- [ ] Each day: if the VM was preempted, start it and re-run the same command. Run `analyze.py` and watch for spikes in excluded trials.
+- [ ] Each day: if the machine rebooted or was preempted, re-run the same command. Run `analyze.py` and watch for spikes in excluded trials.
 - **Gate:** at least 95 tasks are kept after the oracle, and at least 95% of planned trials have a reward.
 
 ### Phase 3: Analysis and write-up (days 14–18)
@@ -282,6 +346,8 @@ AndroidSkillEval/
 │   └── SKILLS_LOCK.md          # generated: skill names, sizes, hashes
 ├── scripts/
 │   ├── prepare_skills.sh       # pin + flatten android/skills
+│   ├── check_machine.sh        # can this PC run it? suggests N_CONCURRENT
+│   ├── build_image.sh          # build a task image locally (registry outage workaround)
 │   ├── run_matrix.sh           # pilot | targeted | core (resumable)
 │   └── analyze.py              # trials.csv + summary.md with bootstrap CIs
 ├── results/                    # committed summaries (created by analyze.py)
@@ -329,7 +395,11 @@ AndroidSkillEval/
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| KVM fails on Spot | Unknown (not documented) | Blocks the run | `kvm-ok` on day 1; recreate as on-demand. |
+| Google's image registry stays down | Happening now | No prebuilt images | Local builds via `scripts/build_image.sh`; report the issue. If Google fixes it, the script pulls instead. |
+| Old tasks no longer build (dependency drift) | Medium | Fewer tasks | Build failures drop the task before any agent spend, and are listed in the results. |
+| KVM fails on Spot / WSL2 | Unknown | Blocks the run | `check_machine.sh` + one-task oracle on day 1; on GCP recreate as on-demand; on Windows check BIOS virtualization and Windows 11. |
+| Home PC sleeps or Windows Update restarts it | Medium | Lost hours | Sleep off, updates paused; the run resumes safely. |
+| ISP data cap | Low–medium | Overage fees | Check your plan; builds and agent installs download a few hundred GB. |
 | N2 CPU quota too low | Medium on new projects | Can't create the VM | Check quotas first and request an increase early. |
 | Oracle fails on some tasks | Medium | Smaller dataset | Dropped automatically before any agent spend, and listed in results. |
 | Ceiling effect | High with frontier models | Hides the effect | Model selection rule in the pilot (C0 only). |
@@ -348,9 +418,10 @@ AndroidSkillEval/
 ## 11. Next actions (today)
 
 1. **Read `PREREGISTRATION.md`,** change anything you disagree with, and commit it. That timestamp matters.
-2. **Upgrade the GCP account to paid, then check N2 and preemptible CPU quota in `us-central1`.**
-3. **Create the VM, run `kvm-ok`, then the one-task oracle check.** If it passes, the hardest risk is gone.
-4. Add API keys, set spend caps, and run `scripts/run_matrix.sh pilot`.
+2. **Run `scripts/check_machine.sh` on your PC** (in Ubuntu on WSL2 if you're on Windows 11). If it says OK, skip Google Cloud. If not, use the VM in section 6.2.
+3. **Build one image and run its oracle** (Phase 0, last step). If it passes, the hardest risks are gone.
+4. Report the registry outage (section 6.0).
+5. Add API keys, set spend caps, and run `scripts/run_matrix.sh pilot`.
 
 ---
 
@@ -367,6 +438,11 @@ AndroidSkillEval/
   - Setup fixes: the Compose plugin, quota, Spot/KVM check, and the timeout cap.
   - Recomputed the budget.
 
+- **2026-10-29, second recheck ("can I run it on my own PC?"):**
+  - Found that Google's image registry rejects all pulls, and added the local image build (`scripts/build_image.sh`) and the fallback in `run_matrix.sh`.
+  - Fixed re-runs that rebuilt images for already-finished tasks.
+  - Added the own-PC option (Linux / Windows 11 WSL2), `scripts/check_machine.sh`, `EXTRA_HARBOR_ARGS` for under-8-thread PCs, local timing, and a split budget.
+
 ## Sources
 - [Android Bench leaderboard](https://developer.android.com/bench) and [methodology v2](https://developer.android.com/bench/methodology/2)
 - [Android Bench 2.0 announcement](https://developer.android.com/blog/posts/android-bench-2-0-pushing-the-frontier-with-challenging-long-horizon-tasks)
@@ -379,4 +455,6 @@ AndroidSkillEval/
 - [Harbor docs: skills](https://docs.harborframework.com/jobs/skills), [agents](https://docs.harborframework.com/agents/pre-integrated-agents), [run a job](https://docs.harborframework.com/jobs/run-a-job)
 - [GCP nested virtualization overview](https://docs.cloud.google.com/compute/docs/instances/nested-virtualization/overview)
 - [GCP free trial terms](https://cloud.google.com/terms/free-trial/index-20170308)
+- [WSL `.wslconfig` reference](https://learn.microsoft.com/en-us/windows/wsl/wsl-config)
+- [Archived android-bench repo (image builder)](https://github.com/android-bench/android-bench)
 - [SkillsBench (arXiv 2602.12670)](https://arxiv.org/abs/2602.12670)
