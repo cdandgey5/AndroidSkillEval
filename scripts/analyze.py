@@ -25,7 +25,8 @@ OUT = ROOT / "results"
 CFG = json.loads((ROOT / "config/targeted_tasks.json").read_text())
 TARGETED = {t["task"]: t for t in CFG["tasks"]}
 HARM_WATCH = set(CFG["harm_watch"]["tasks"])
-NON_INFERIORITY_PP = -10.0  # pre-registered margin for H2
+import os
+NON_INFERIORITY_PP = float(os.environ.get("H2_MARGIN_PP", "-10"))  # pre-registered: -10 full study, -20 lean
 N_BOOT = 10_000
 
 

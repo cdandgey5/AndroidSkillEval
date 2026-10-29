@@ -14,6 +14,11 @@
 #   scripts/run_matrix.sh pilot      # 10 fixed tasks, C0 + C1, k=1 -> jobs/pilot
 #   scripts/run_matrix.sh targeted   # targeted tasks, C0/C1/C2, k=5 -> jobs/main
 #   scripts/run_matrix.sh core       # all tasks (targeted ones are skipped if done) -> jobs/main
+#   scripts/run_matrix.sh plan       # print the tasks and trial counts the settings below give
+#
+# Study size (pick once, before the first main run; job names include k):
+#   STUDY=full (default): all 100 tasks; k=5 targeted (C0/C1/C2), k=3 others (C0/C1)
+#   STUDY=lean: 9 targeted at k=3 + a fixed sample of 40 others at k=2  (~1/3 of the trials)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,8 +29,11 @@ N_CONCURRENT="${N_CONCURRENT:-3}"  # each trial asks for 8 CPU / 32 GB; scripts/
 # Extra flags for every harbor run, e.g. "--cpus ignore" on a PC with fewer than 8 CPU threads.
 read -r -a EXTRA_HARBOR_ARGS <<<"${EXTRA_HARBOR_ARGS:-}"
 REGISTRY="us-central1-docker.pkg.dev/android-bench-public/android-bench-tasks"
-K_CORE="${K_CORE:-3}"
-K_TARGETED="${K_TARGETED:-5}"
+case "${STUDY:-full}" in
+  full) : "${K_CORE:=3}" "${K_TARGETED:=5}" "${SAMPLE:=}" ;;
+  lean) : "${K_CORE:=2}" "${K_TARGETED:=3}" "${SAMPLE:=40}" ;;
+  *) echo "STUDY must be full or lean" >&2; exit 1 ;;
+esac
 # Optional agent-timeout cap, decided in the pilot (default task timeout is 20,000 s).
 AGENT_TIMEOUT_MULT="${AGENT_TIMEOUT_MULT:-1}"
 
@@ -152,6 +160,12 @@ plan_task() {  # full-study plan for one task
   else run_task_block "$1" "$K_CORE" C0 C1; fi
 }
 
+sample_others() {  # fixed, reproducible sample: non-targeted tasks ordered by sha256 of their name
+  local t
+  for t in "$@"; do is_targeted "$t" || echo "$(printf '%s' "$t" | sha256sum | cut -c1-16) $t"; done \
+    | sort | head -n "$SAMPLE" | cut -d' ' -f2
+}
+
 all_tasks() {
   local dir="$ROOT/.cache/dataset/${DATASET#*/}"
   for _ in 1 2 3; do
@@ -171,10 +185,19 @@ case "$PHASE" in
   targeted)
     JOBS="$ROOT/jobs/main"; mkdir -p "$JOBS"
     for t in "${TARGETED[@]}"; do plan_task "$t"; done ;;
-  core)
+  core|plan)
     JOBS="$ROOT/jobs/main"; mkdir -p "$JOBS"
     mapfile -t TASKS < <(all_tasks)
     (( ${#TASKS[@]} == 100 )) || { echo "expected 100 tasks, got ${#TASKS[@]}; check 'harbor download $DATASET'" >&2; exit 1; }
+    if [[ -n "$SAMPLE" ]]; then mapfile -t TASKS < <(printf '%s\n' "${TARGETED[@]}"; sample_others "${TASKS[@]}"); fi
+    if [[ "$PHASE" == plan ]]; then
+      n_t=0; n_o=0
+      for t in "${TASKS[@]}"; do if is_targeted "$t"; then n_t=$((n_t + 1)); else n_o=$((n_o + 1)); echo "other     $t"; fi; done
+      printf 'targeted  %s\n' "${TARGETED[@]}"
+      echo "STUDY=${STUDY:-full}: $n_t targeted x 3 conditions x k=$K_TARGETED + $n_o others x 2 conditions x k=$K_CORE" \
+           "= $(( (n_t * 3 * K_TARGETED + n_o * 2 * K_CORE) * ${#AGENT_CONFIGS[@]} )) agent trials, $(( n_t + n_o )) image builds + oracles"
+      exit 0
+    fi
     for t in "${TASKS[@]}"; do plan_task "$t"; done ;;
   *) echo "unknown phase: $PHASE" >&2; exit 1 ;;
 esac

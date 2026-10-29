@@ -215,13 +215,15 @@ scripts/check_machine.sh                             # prints a verdict and a su
 
 **How long it takes locally** (rough; the pilot measures real numbers):
 
-| Machine | Concurrent trials | Full study, running nonstop |
-|---|---|---|
-| 32 GB RAM, 8+ threads | 1 | ~17 days (~13 with k=2 on non-targeted tasks) |
-| 64 GB RAM, 16+ threads | 2 | ~10–11 days |
-| 128 GB RAM, 24+ threads | 3 | ~8 days |
+| Study size | What runs | 32 GB PC (1 trial at a time) | 64 GB PC (2 at a time) |
+|---|---|---|---|
+| **Lean** (`STUDY=lean`) | 9 targeted tasks × 3 setups × 3 tries, plus 40 other tasks × 2 setups × 2 tries = 241 trials, 49 image builds | **~6–7 days of machine time** | ~4 days |
+| **Full** (default) | 100 tasks, 681 trials, 100 image builds | ~17 days | ~10–11 days |
 
-These assume about 30 min per trial, about 25 min per oracle and about 20 min per image build.
+- **Assumptions:** about 30 min per trial, 25 min per oracle and 20 min per image build. Many tasks are small, so real numbers may be lower.
+- **It doesn't have to run nonstop.** Stop it any time (Ctrl+C, a reboot, overnight-only runs) and re-run the same command. Finished work is kept, and only the interrupted trial restarts. Six days of machine time can be 12 nights.
+- **Maybe 2 at a time on 32 GB:** the 32 GB per trial is a cap, not what a trial actually uses. In the pilot, watch `docker stats`. If one trial peaks under about 13 GB, try `N_CONCURRENT=2` and check that no trials fail from lack of memory. That would roughly halve the trial time.
+- **Lean vs full:** the lean study answers the same questions with wider error bars. It can only rule out *large* harm on general tasks (more than about 20 points), versus 10 points for the full study. Start lean, publish post 1, and run the full study later only if the results justify it.
 
 **Recommendation:**
 - **If `check_machine.sh` says OK, run it on your PC.** It saves about $75–325 of cloud compute, and electricity is about $10–20 at Ontario rates.
@@ -260,10 +262,10 @@ gcloud compute instances create android-bench \
 | Image builds + oracle (100 tasks) | 100 each | | |
 | Targeted: 9 tasks × C0/C1/C2 × k=5 | 135 trials | | |
 | Non-targeted: 91 tasks × C0/C1 × k=3 | 546 trials | | |
-| Machine time | | 8–17 days, depending on RAM | ~9 days (~220 h) |
+| Machine time | | full: 8–17 days depending on RAM; lean: ~6–7 days on 32 GB | full: ~9 days (~220 h); lean: ~3–4 days |
 | Machine cost | | ~$10–20 electricity | ~$290 on-demand (about $1.55/h); Spot is typically 60–90% less. Disk ~$35. |
-| API (assumed $0.20–0.80 per trial with a Haiku-class model in Claude Code; the pilot measures it) | ~700 | ~$140–560 | ~$140–560 |
-| **Total** | | **~$150–580** | **~$220–900** |
+| API (assumed $0.20–0.80 per trial with a Haiku-class model in Claude Code; the pilot measures it) | ~700 full / ~240 lean | full ~$140–560, lean ~$50–200 | same |
+| **Total** | | **full ~$150–580, lean ~$60–220** | **full ~$220–900** |
 
 **Cost guards:**
 - Set hard spend caps in the provider console before the main runs.
@@ -297,6 +299,7 @@ Each phase has an exit gate. Don't start the next phase until it passes.
 - **Gate:** the model is in the 40–75% band, cost fits the budget, detection works, and the pilot oracles pass.
 
 ### Phase 2: Main runs (days 5–13 on a VM or a 128 GB PC, up to day ~22 on a 32 GB PC; mostly unattended in `tmux`)
+- [ ] Choose the study size (full or lean) and write it in `PREREGISTRATION.md`. Then `export STUDY=lean` (or leave it unset for full) for every command below.
 - [ ] `scripts/run_matrix.sh targeted` first. It takes about 1.5 days and gives you the most interesting numbers early.
 - [ ] Then `scripts/run_matrix.sh core`. It skips the targeted tasks that are already done.
 - [ ] Each day: if the machine rebooted or was preempted, re-run the same command. Run `analyze.py` and watch for spikes in excluded trials.
@@ -442,6 +445,7 @@ AndroidSkillEval/
   - Found that Google's image registry rejects all pulls, and added the local image build (`scripts/build_image.sh`) and the fallback in `run_matrix.sh`.
   - Fixed re-runs that rebuilt images for already-finished tasks.
   - Added the own-PC option (Linux / Windows 11 WSL2), `scripts/check_machine.sh`, `EXTRA_HARBOR_ARGS` for under-8-thread PCs, local timing, and a split budget.
+- **2026-10-29, third pass ("do we need 17 days?"):** added `STUDY=lean` (241 trials, about 6–7 days on a 32 GB PC), the `plan` command to preview a study, the lean H2 margin (−20 pp), and the note that runs can stop and resume.
 
 ## Sources
 - [Android Bench leaderboard](https://developer.android.com/bench) and [methodology v2](https://developer.android.com/bench/methodology/2)

@@ -4,10 +4,15 @@ Commit this file before any agent run. The commit timestamp shows that the hypot
 
 ## Hypotheses
 - **H1 (help on target):** on the 9 targeted tasks (`config/targeted_tasks.json`), C1 (all skills) scores higher than C0 (no skills). With 9 tasks, this is reported as an estimate with its CI. It's expected to be directional only.
-- **H2 (no meaningful harm elsewhere):** on non-targeted tasks, C1 is non-inferior to C0. That means the lower bound of the 95% CI on the C1 − C0 delta is above −10 percentage points.
+- **H2 (no meaningful harm elsewhere):** on non-targeted tasks, C1 is non-inferior to C0. That means the lower bound of the 95% CI on the C1 − C0 delta is above the margin for the chosen study size: −10 percentage points (full) or −20 (lean).
 - **H3 (triggering gap):** on targeted tasks, C2 (forced skill) scores at least as high as C1.
 - **H4 (skill opens):** in C1, agents open the target skill in fewer than 100% of targeted trials.
 - **H5 (cost):** C1 uses more input tokens per trial than C0 on non-targeted tasks.
+
+## Study size (choose one before the first main run, and write it here)
+- **Full:** all 100 tasks. Targeted tasks at k=5 (C0/C1/C2), the other 91 at k=3 (C0/C1). 681 agent trials. H2 margin −10 pp.
+- **Lean:** the 9 targeted tasks at k=3 (C0/C1/C2), plus a fixed sample of 40 other tasks at k=2 (C0/C1). 241 agent trials. H2 margin **−20 pp**, because 40 tasks at k=2 give a CI of roughly ±15 pp. The sample is the 40 non-targeted tasks with the lowest sha256 of their name; `STUDY=lean scripts/run_matrix.sh plan` prints the list.
+- Chosen: _TBD_ (full / lean)
 
 ## Fixed before running
 - **Dataset:** Android Bench 1.0 (`android-bench/android-bench` on Harbor Hub), 100 tasks. Each task's oracle runs first on our machine. A task whose oracle fails is dropped before any agent trial, and the results list it.
@@ -24,9 +29,7 @@ Commit this file before any agent run. The commit timestamp shows that the hypot
   - the same agent timeout
   - up to 2 Harbor retries
   - condition order shuffled per task
-- **Trials:**
-  - Targeted tasks: k=5 per condition (C0, C1, C2).
-  - All other tasks: k=3 per condition (C0, C1).
+- **Trials:** as set by the chosen study size above.
 - **Model selection:** in the pilot (10 fixed tasks, k=1), pick the first model whose **C0** pass rate is between 40% and 75%. C1 pilot results are never used for model choice. Pilot trials are kept separate and are not part of the main analysis.
 
 ## Analysis
@@ -37,7 +40,7 @@ Commit this file before any agent run. The commit timestamp shows that the hypot
 - **Slices, all reported whatever the result:** all tasks, targeted tier 1, targeted (all), non-targeted, and harm watch.
 - **Exclusions:** trials with no verifier reward (environment or verifier failure) are excluded and counted per condition. Agent timeouts and crashes still get a verifier reward, and count as they score.
 - **Skill opens:** a trial counts if an ATIF tool call is a Skill call naming the skill or touches `skills/<skill>/`.
-- **Implementation:** `scripts/analyze.py` at the commit that adds this file.
+- **Implementation:** `scripts/analyze.py` at the commit that adds this file. For the lean study, run it as `H2_MARGIN_PP=-20 python3 scripts/analyze.py`.
 
 ## Filled in after the pilot, before the main runs
 - Agent / model / effort / version: _TBD_
