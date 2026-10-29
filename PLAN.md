@@ -148,7 +148,7 @@ The list is frozen before any run. Don't edit it after seeing results.
 - The unit is the task. Each task's score is the mean reward over its k trials.
 - The effect is the paired delta (condition B minus A) over shared tasks, in pp.
 - **95% CI:** paired bootstrap over tasks (10,000 resamples, seed 0), plus win/loss counts.
-- **H2 (no harm) is non-inferiority.** It's met if the CI's lower bound on non-targeted tasks is above **−10 pp**. A tighter margin isn't testable at this budget. On realistic stub data, the CI half-width was about ±5–7 pp, which gives roughly 75–95% power if the true effect is zero.
+- **H2 (no harm) is non-inferiority.** It's met if the CI's lower bound on non-targeted tasks is above **−10 pp**. A tighter margin isn't testable at this budget. On worst-case stub data (every task a coin flip, true effect zero), the CI half-width was about ±8 pp. Real tasks are partly deterministic, so expect ±5–8 pp, which gives roughly 65–95% power if the true effect is zero. To raise power, use k=4 on non-targeted tasks (about 180 more trials).
 - **Exclusions:** a trial with no verifier reward (environment or verifier failure) is excluded and counted per condition. Agent timeouts and crashes count as 0.
 - `scripts/analyze.py` implements all of this. It was tested on synthetic Harbor-shaped output, including dropped tasks, excluded trials and skill-open detection.
 
