@@ -1,0 +1,16 @@
+{
+  "_note": "Android Bench 1.0 tasks whose problem overlaps an official skill. Hand-checked against each task's problem description and the skill's SKILL.md. tier 1 = skill directly covers the fix; tier 2 = partial overlap.",
+  "tasks": [
+    {"task": "android__nowinandroid-pr_553",           "skill": "adaptive",                     "tier": 1, "why": "Width-based switch between bottom bar and NavigationRail"},
+    {"task": "nowinandroid-adaptive-1",                "skill": "adaptive",                     "tier": 1, "why": "Nav bar fails to become NavigationRail on unfold"},
+    {"task": "cahier-adaptive-1",                      "skill": "adaptive",                     "tier": 1, "why": "Text lost on rotation/resize (rememberSaveable, config changes)"},
+    {"task": "coil-kt__coil-pr_1964",                  "skill": "jetpack-compose-performance",  "tier": 1, "why": "AsyncImage causes unnecessary recompositions"},
+    {"task": "lemmynet__jerboa-pr_941",                "skill": "navigation-event",             "tier": 1, "why": "System back should close the side drawer (BackHandler)"},
+    {"task": "thunderbird__thunderbird-android-pr_7103","skill": "navigation-event",            "tier": 2, "why": "Inconsistent back navigation in account setup"},
+    {"task": "automattic__pocket-casts-android-pr_757","skill": "android-permissions-security", "tier": 2, "why": "Android 13 POST_NOTIFICATIONS runtime permission"},
+    {"task": "getsentry__sentry-java-pr_4724",         "skill": "anr-audit-and-fix",            "tier": 2, "why": "StrictMode disk reads on main thread during init"},
+    {"task": "chrisbanes__haze-pr_250",                "skill": "agp-9-upgrade",                "tier": 2, "why": "Kotlin 2.0 + Compose compiler Gradle plugin migration"},
+    {"task": "android_snippets_1",                     "skill": "agp-9-upgrade",                "tier": 2, "why": "JDK 25 + Kotlin 2.3 toolchain upgrade"},
+    {"task": "android_androidify_gradleplugin",        "skill": "agp-9-upgrade",                "tier": 2, "why": "Move build logic into convention plugins"}
+  ]
+}
