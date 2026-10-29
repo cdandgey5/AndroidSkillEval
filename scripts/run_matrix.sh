@@ -1,63 +1,106 @@
 #!/usr/bin/env bash
 # Run the with/without-skills matrix on Android Bench 1.0 via Harbor.
 #
-# One Harbor job per (agent config, condition, task). Jobs that already have a
-# job-level result.json are skipped, so the script is safe to re-run after a crash
-# or spot-VM preemption. All conditions for a task run back to back, then the
-# task image is deleted: images are big, and pulling each one once saves hours.
+# Per task: oracle first (drop the task if the reference fix fails on this
+# machine), then every agent condition, then delete the task image. Each image
+# is pulled once and the disk never holds more than one task's image.
+#
+# One Harbor job per (agent config, condition, task). A job counts as done only
+# when its result.json has finished_at set (Harbor writes result.json when a job
+# starts), so the script is safe to re-run after a crash or spot preemption.
 #
 # Usage:
-#   scripts/run_matrix.sh pilot      # 5 tasks, k=1, to measure time and cost
-#   scripts/run_matrix.sh core       # all 100 tasks, C0 + C1
-#   scripts/run_matrix.sh targeted   # targeted tasks: extra trials + C2 (forced skill)
+#   scripts/run_matrix.sh pilot      # 10 fixed tasks, C0 + C1, k=1 -> jobs/pilot
+#   scripts/run_matrix.sh targeted   # targeted tasks, C0/C1/C2, k=5 -> jobs/main
+#   scripts/run_matrix.sh core       # all tasks (targeted ones are skipped if done) -> jobs/main
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PHASE="${1:?usage: run_matrix.sh pilot|core|targeted}"
+PHASE="${1:?usage: run_matrix.sh pilot|targeted|core}"
 DATASET="${DATASET:-android-bench/android-bench}"
-JOBS="${JOBS:-$ROOT/jobs}"
+ORACLE_JOBS="$ROOT/jobs/oracle"
 N_CONCURRENT="${N_CONCURRENT:-3}"  # each trial asks for 8 CPU / 32 GB; 3 fit on n2-standard-32
 K_CORE="${K_CORE:-3}"
 K_TARGETED="${K_TARGETED:-5}"
+# Optional agent-timeout cap, decided in the pilot (default task timeout is 20,000 s).
+AGENT_TIMEOUT_MULT="${AGENT_TIMEOUT_MULT:-1}"
 
-# "agent|model|effort". Confirm the exact model ids with your provider in the pilot.
-AGENT_CONFIGS=(${AGENT_CONFIGS:-"claude-code|anthropic/claude-haiku-5-5|medium"})
+# "agent|model|effort|version". Leave version empty in the pilot, then pin the
+# version the pilot installed. Confirm exact model ids with your provider.
+read -r -a AGENT_CONFIGS <<<"${AGENT_CONFIGS:-claude-code|anthropic/claude-haiku-5-5|medium|}"
 
-# Same for every condition: no web access, so skills are the only new knowledge source.
-COMMON_ARGS=(--ak disable_web_search=true -r 2 -n "$N_CONCURRENT" -q -y)
+PILOT_TASKS=(  # 3 tier-1 targeted + 7 non-targeted of mixed size
+  android__nowinandroid-pr_553 coil-kt__coil-pr_1964 lemmynet__jerboa-pr_941
+  airbnb__lottie-android-pr_2427 coil-kt__coil-pr_2033 usuiat__zoomable-pr_334
+  tuskyapp__tusky-pr_4821 thunderbird__thunderbird-android-pr_8020
+  mohamedrejeb__compose-rich-editor-pr_335 pocketcasts-room-3
+)
 
-all_tasks() { harbor download "$DATASET" -o "$ROOT/.cache/dataset" >/dev/null 2>&1 || true; ls "$ROOT/.cache/dataset/${DATASET#*/}"; }
-targeted_tasks() { python3 -c "import json;[print(t['task']) for t in json.load(open('$ROOT/config/targeted_tasks.json'))['tasks']]"; }
+COMMON_ARGS=(-r 2 -n "$N_CONCURRENT" -q -y)
+
+mapfile -t TARGETED < <(python3 -c "import json;[print(t['task']) for t in json.load(open('$ROOT/config/targeted_tasks.json'))['tasks']]")
+is_targeted() { [[ " ${TARGETED[*]} " == *" $1 "* ]]; }
 skill_for() { python3 -c "import json,sys;print(next(t['skill'] for t in json.load(open('$ROOT/config/targeted_tasks.json'))['tasks'] if t['task']==sys.argv[1]))" "$1"; }
+
+job_done() {
+  [[ -f "$1/result.json" ]] && python3 -c "import json,sys;sys.exit(0 if json.load(open(sys.argv[1])).get('finished_at') else 1)" "$1/result.json"
+}
+
+oracle_passed() {
+  python3 - "$1" <<'PY'
+import json, pathlib, sys
+rs = [json.loads(p.read_text()) for p in pathlib.Path(sys.argv[1]).glob("*/result.json")]
+sys.exit(0 if any(((r.get("verifier_result") or {}).get("rewards") or {}).get("reward") == 1 for r in rs) else 1)
+PY
+}
+
+run_oracle() {  # returns 0 if the reference solution passes on this machine
+  local task="$1" dir="$ORACLE_JOBS/oracle__none__OR__${1}__k1"
+  if ! job_done "$dir"; then
+    rm -rf "$dir"
+    harbor run -d "$DATASET" -i "*$task" -a oracle -k 1 -o "$ORACLE_JOBS" --job-name "$(basename "$dir")" \
+      "${COMMON_ARGS[@]}" || true
+  fi
+  oracle_passed "$dir"
+}
 
 run_one() {  # run_one <agent_cfg> <condition> <task> <k>
   local cfg="$1" cond="$2" task="$3" k="$4"
-  IFS='|' read -r agent model effort <<<"$cfg"
-  local name="${agent}__${model//\//-}__${cond}__${task}__k${k}"
-  if [[ -f "$JOBS/$name/result.json" ]]; then echo "done  $name"; return; fi
+  local agent model effort version
+  IFS='|' read -r agent model effort version <<<"$cfg"
+  local name="${agent}__${model//\//-}${effort:+-$effort}__${cond}__${task}__k${k}"
+  if job_done "$JOBS/$name"; then echo "done  $name"; return; fi
   rm -rf "${JOBS:?}/$name"
 
-  local extra=()
+  local args=(--ak disable_web_search=true --agent-timeout-multiplier "$AGENT_TIMEOUT_MULT")
+  [[ -n "$effort" ]] && args+=(--effort "$effort")
+  [[ -n "$version" ]] && args+=(--ak "version=$version")
   case "$cond" in
-    C0) ;;                                            # baseline: no skills
-    C1) extra=(--skill "$ROOT/skills/all") ;;         # all official skills, agent decides
-    C2) local s; s="$(skill_for "$task")"             # only the matching skill, explicitly requested
-        extra=(--skill "$ROOT/skills/single/$s"
+    C0) ;;                                                   # baseline: no skills
+    C1) args+=(--skill "$ROOT/skills/all") ;;                # all official skills, agent decides
+    C2) local s; s="$(skill_for "$task")"                    # only the matching skill, explicitly requested
+        args+=(--skill "$ROOT/skills/all/$s"
                --extra-instruction "Before you start, read the \`$s\` skill and follow it.") ;;
   esac
 
   echo "run   $name"
-  harbor run -d "$DATASET" -i "*$task" -a "$agent" -m "$model" --effort "$effort" \
-    -k "$k" -o "$JOBS" --job-name "$name" "${COMMON_ARGS[@]}" "${extra[@]}" \
+  harbor run -d "$DATASET" -i "*$task" -a "$agent" -m "$model" -k "$k" \
+    -o "$JOBS" --job-name "$name" "${COMMON_ARGS[@]}" "${args[@]}" \
     || echo "FAIL  $name (re-run the script to retry)"
 }
 
 prune_task_image() {
   docker images --format '{{.Repository}}:{{.Tag}}' | grep -F "/$1:" | xargs -r docker rmi -f >/dev/null || true
+  docker image prune -f >/dev/null || true
 }
 
 run_task_block() {  # run_task_block <task> <k> <conditions...>
   local task="$1" k="$2"; shift 2
+  if ! run_oracle "$task"; then
+    echo "drop  $task (oracle failed on this machine)"
+    prune_task_image "$task"
+    return
+  fi
   # Shuffle condition order per task so time-of-day / API drift doesn't line up with one condition.
   local conds; conds=$(printf '%s\n' "$@" | shuf)
   for cfg in "${AGENT_CONFIGS[@]}"; do
@@ -66,13 +109,34 @@ run_task_block() {  # run_task_block <task> <k> <conditions...>
   prune_task_image "$task"
 }
 
+plan_task() {  # full-study plan for one task
+  if is_targeted "$1"; then run_task_block "$1" "$K_TARGETED" C0 C1 C2
+  else run_task_block "$1" "$K_CORE" C0 C1; fi
+}
+
+all_tasks() {
+  local dir="$ROOT/.cache/dataset/${DATASET#*/}"
+  for _ in 1 2 3; do
+    [[ -d "$dir" ]] && break
+    harbor download "$DATASET" -o "$ROOT/.cache/dataset" >/dev/null 2>&1 || sleep 5
+  done
+  ls "$dir" 2>/dev/null || true
+}
+
 [[ -d "$ROOT/skills/all" ]] || "$ROOT/scripts/prepare_skills.sh"
-mkdir -p "$JOBS"
+mkdir -p "$ORACLE_JOBS"
 
 case "$PHASE" in
-  pilot)    for t in $(targeted_tasks | head -3) airbnb__lottie-android-pr_2427 coil-kt__coil-pr_2033; do
-              run_task_block "$t" 1 C0 C1; done ;;
-  core)     for t in $(all_tasks); do run_task_block "$t" "$K_CORE" C0 C1; done ;;
-  targeted) for t in $(targeted_tasks); do run_task_block "$t" "$K_TARGETED" C0 C1 C2; done ;;
+  pilot)
+    JOBS="$ROOT/jobs/pilot"; mkdir -p "$JOBS"
+    for t in "${PILOT_TASKS[@]}"; do run_task_block "$t" 1 C0 C1; done ;;
+  targeted)
+    JOBS="$ROOT/jobs/main"; mkdir -p "$JOBS"
+    for t in "${TARGETED[@]}"; do plan_task "$t"; done ;;
+  core)
+    JOBS="$ROOT/jobs/main"; mkdir -p "$JOBS"
+    mapfile -t TASKS < <(all_tasks)
+    (( ${#TASKS[@]} == 100 )) || { echo "expected 100 tasks, got ${#TASKS[@]}; check 'harbor download $DATASET'" >&2; exit 1; }
+    for t in "${TASKS[@]}"; do plan_task "$t"; done ;;
   *) echo "unknown phase: $PHASE" >&2; exit 1 ;;
 esac

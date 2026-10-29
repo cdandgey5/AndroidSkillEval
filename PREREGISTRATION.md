@@ -3,43 +3,46 @@
 Commit this file before any agent run. The commit timestamp shows that the hypotheses and the analysis were fixed in advance. If you change it later, add a dated entry under "Deviations" and give the reason.
 
 ## Hypotheses
-- **H1 (help on target):** on the 11 targeted tasks (`config/targeted_tasks.json`), C1 (all skills) scores higher than C0 (no skills).
-- **H2 (no harm elsewhere):** on the 89 non-targeted tasks, the C1 − C0 delta lies within ±3 pp.
+- **H1 (help on target):** on the 9 targeted tasks (`config/targeted_tasks.json`), C1 (all skills) scores higher than C0 (no skills). With 9 tasks, this is reported as an estimate with its CI. It's expected to be directional only.
+- **H2 (no meaningful harm elsewhere):** on non-targeted tasks, C1 is non-inferior to C0. That means the lower bound of the 95% CI on the C1 − C0 delta is above −10 percentage points.
 - **H3 (triggering gap):** on targeted tasks, C2 (forced skill) scores at least as high as C1.
-- **H4 (activation):** in C1, agents open the target skill in fewer than 100% of targeted trials.
+- **H4 (skill opens):** in C1, agents open the target skill in fewer than 100% of targeted trials.
 - **H5 (cost):** C1 uses more input tokens per trial than C0 on non-targeted tasks.
 
 ## Fixed before running
-- **Dataset:** Android Bench 1.0 (`android-bench/android-bench` on Harbor Hub), 100 tasks. Tasks the oracle fails on our infra are dropped before any agent run, and the post lists them.
-- **Skills:** `android/skills` at commit `6daa53ef27fa2aa87827d183a85c06cedceca833`, all skills except `android-cli`. Hashes are in `config/SKILLS_LOCK.md`.
-- **Targeted slice:** the 11 tasks in `config/targeted_tasks.json`. Tier 1 is 5 tasks; tiers 1+2 together are 11.
+- **Dataset:** Android Bench 1.0 (`android-bench/android-bench` on Harbor Hub), 100 tasks. Each task's oracle runs first on our machine. A task whose oracle fails is dropped before any agent trial, and the results list it.
+- **Skills:** `android/skills` at commit `6daa53ef27fa2aa87827d183a85c06cedceca833`, all skills except `android-cli`, whose `android` binary isn't in the task images. Hashes are in `config/SKILLS_LOCK.md`.
+- **Targeted slice:** the 9 tasks in `config/targeted_tasks.json`. Tier 1 is 6 tasks; tiers 1+2 together are 9.
+- **Harm-watch slice:** the 6 tasks under `harm_watch` in the same file. Descriptive only, no hypothesis.
 - **Conditions:**
   - C0: no skills.
   - C1: `--skill skills/all`.
-  - C2: `--skill skills/single/<skill>` plus the extra instruction "Before you start, read the `<skill>` skill and follow it."
+  - C2: `--skill skills/all/<skill>` plus the extra instruction "Before you start, read the `<skill>` skill and follow it."
 - **Same in every condition:**
   - web tools disabled (`disable_web_search=true`)
   - the same agent version, model and reasoning effort
-  - the dataset's own timeouts
-  - up to 2 retries for infra errors
+  - the same agent timeout
+  - up to 2 Harbor retries
+  - condition order shuffled per task
 - **Trials:**
-  - Core: k=3 per task per condition (C0, C1).
-  - Targeted: k=5 per task per condition (C0, C1, C2).
-- **Model selection:** in the pilot, run C0 on 10 random tasks. Pick the first model whose baseline is between 40% and 75%. The choice is recorded in this file before the core run.
+  - Targeted tasks: k=5 per condition (C0, C1, C2).
+  - All other tasks: k=3 per condition (C0, C1).
+- **Model selection:** in the pilot (10 fixed tasks, k=1), pick the first model whose **C0** pass rate is between 40% and 75%. C1 pilot results are never used for model choice. Pilot trials are kept separate and are not part of the main analysis.
 
 ## Analysis
-- **Primary metric:** Android Bench binary reward (all fail-to-pass and pass-to-pass tests pass).
+- **Primary metric:** Android Bench pass/fail reward (all fail-to-pass and pass-to-pass tests pass).
 - **Task score:** the mean reward over that task's trials.
 - **Effect:** the paired mean of (condition B − condition A) over shared tasks, in percentage points.
 - **Uncertainty:** 95% paired bootstrap CI over tasks (10,000 resamples, seed 0), plus win/loss counts.
-- **Slices, all reported whatever the result:** all tasks, tier 1, tiers 1+2, non-targeted.
-- **Exclusions:** trials where the agent never started (infra errors) are excluded. Agent errors and timeouts count as reward 0.
-- **Activation:** a trial counts as activated if an ATIF tool call opens `skills/<target-skill>/` or calls the Skill tool with that name.
+- **Slices, all reported whatever the result:** all tasks, targeted tier 1, targeted (all), non-targeted, and harm watch.
+- **Exclusions:** trials with no verifier reward (environment or verifier failure) are excluded and counted per condition. Agent timeouts and crashes still get a verifier reward, and count as they score.
+- **Skill opens:** a trial counts if an ATIF tool call is a Skill call naming the skill or touches `skills/<skill>/`.
 - **Implementation:** `scripts/analyze.py` at the commit that adds this file.
 
-## Model choice (fill in after the pilot, before the core run)
-- Agent / model / effort: _TBD_
-- Pilot C0 baseline on 10 tasks: _TBD_
+## Filled in after the pilot, before the main runs
+- Agent / model / effort / version: _TBD_
+- Pilot C0 pass rate on the 10 tasks: _TBD_
+- Agent timeout multiplier (default 1 = 20,000 s): _TBD_
 
 ## Deviations
 _None yet._

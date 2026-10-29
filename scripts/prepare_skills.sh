@@ -31,13 +31,6 @@ find "$SRC" -name SKILL.md -not -path '*/.git/*' | sort | while read -r f; do
   cp -r "$dir" "$OUT/$name"
 done
 
-# One directory per skill too, for the forced (single-skill) condition.
-mkdir -p "$ROOT/skills/single"
-for d in "$OUT"/*/; do
-  name="$(basename "$d")"
-  mkdir -p "$ROOT/skills/single/$name"
-  cp -r "$d" "$ROOT/skills/single/$name/$name"
-done
 
 {
   echo "# Skills lock"

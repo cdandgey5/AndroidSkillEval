@@ -1,16 +1,25 @@
 {
-  "_note": "Android Bench 1.0 tasks whose problem overlaps an official skill. Hand-checked against each task's problem description and the skill's SKILL.md. tier 1 = skill directly covers the fix; tier 2 = partial overlap.",
+  "_note": "Android Bench 1.0 tasks whose fix falls inside an official skill's scope. Checked against each task's problem description, its solution patch, and the skill's SKILL.md/references. tier 1 = the skill covers the key API of the fix; tier 2 = partial overlap. Frozen before any agent run.",
   "tasks": [
-    {"task": "android__nowinandroid-pr_553",           "skill": "adaptive",                     "tier": 1, "why": "Width-based switch between bottom bar and NavigationRail"},
-    {"task": "nowinandroid-adaptive-1",                "skill": "adaptive",                     "tier": 1, "why": "Nav bar fails to become NavigationRail on unfold"},
-    {"task": "cahier-adaptive-1",                      "skill": "adaptive",                     "tier": 1, "why": "Text lost on rotation/resize (rememberSaveable, config changes)"},
-    {"task": "coil-kt__coil-pr_1964",                  "skill": "jetpack-compose-performance",  "tier": 1, "why": "AsyncImage causes unnecessary recompositions"},
-    {"task": "lemmynet__jerboa-pr_941",                "skill": "navigation-event",             "tier": 1, "why": "System back should close the side drawer (BackHandler)"},
-    {"task": "thunderbird__thunderbird-android-pr_7103","skill": "navigation-event",            "tier": 2, "why": "Inconsistent back navigation in account setup"},
-    {"task": "automattic__pocket-casts-android-pr_757","skill": "android-permissions-security", "tier": 2, "why": "Android 13 POST_NOTIFICATIONS runtime permission"},
-    {"task": "getsentry__sentry-java-pr_4724",         "skill": "anr-audit-and-fix",            "tier": 2, "why": "StrictMode disk reads on main thread during init"},
-    {"task": "chrisbanes__haze-pr_250",                "skill": "agp-9-upgrade",                "tier": 2, "why": "Kotlin 2.0 + Compose compiler Gradle plugin migration"},
-    {"task": "android_snippets_1",                     "skill": "agp-9-upgrade",                "tier": 2, "why": "JDK 25 + Kotlin 2.3 toolchain upgrade"},
-    {"task": "android_androidify_gradleplugin",        "skill": "agp-9-upgrade",                "tier": 2, "why": "Move build logic into convention plugins"}
-  ]
+    {"task": "android__nowinandroid-pr_553",      "skill": "adaptive",                     "tier": 1, "why": "Width-only window size class picks bottom bar vs NavigationRail"},
+    {"task": "nowinandroid-adaptive-1",           "skill": "adaptive",                     "tier": 1, "why": "Nav bar must become NavigationRail on unfold (NavigationSuite)"},
+    {"task": "cahier-adaptive-1",                 "skill": "adaptive",                     "tier": 1, "why": "Text lost on rotation/resize; fix uses rememberSaveable"},
+    {"task": "coil-kt__coil-pr_1964",             "skill": "jetpack-compose-performance",  "tier": 1, "why": "AsyncImage over-recomposes; fix adds @Stable"},
+    {"task": "nowinandroid-custom-modifier-node", "skill": "jetpack-compose-performance",  "tier": 1, "why": "Task asks for a custom Modifier.Node; skill ships a custom-modifiers reference"},
+    {"task": "lemmynet__jerboa-pr_941",           "skill": "navigation-event",             "tier": 1, "why": "System back must close the drawer; fix is BackHandler"},
+    {"task": "automattic__pocket-casts-android-pr_757", "skill": "android-permissions-security", "tier": 2, "why": "Android 13 POST_NOTIFICATIONS runtime request"},
+    {"task": "getsentry__sentry-java-pr_4724",    "skill": "anr-audit-and-fix",            "tier": 2, "why": "Disk reads on main thread during init (StrictMode violations)"},
+    {"task": "lemmynet__jerboa-pr_991",           "skill": "navigation-event",             "tier": 2, "why": "30-file drawer refactor; part of the fix is BackHandler"}
+  ],
+  "harm_watch": {
+    "_note": "Descriptive slice, not a hypothesis. Build/toolchain tasks where agp-9-upgrade may trigger although it does not apply (AGP < 9 or KMP). Its instructions tell the agent to stop and ask the user when AGP < 9, which could hurt in a headless run.",
+    "tasks": [
+      "android_snippets_1",
+      "android_androidify_gradleplugin",
+      "chrisbanes__haze-pr_250",
+      "badoo__reaktive-pr_763",
+      "badoo__reaktive-pr_764",
+      "lemmynet__jerboa-pr_1485"
+    ]
+  }
 }

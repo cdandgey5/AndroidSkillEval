@@ -20,9 +20,11 @@ You need x86_64 Linux with KVM, 32 GB RAM per concurrent trial, Docker, and [uv]
 uv tool install harbor
 export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY / GEMINI_API_KEY
 scripts/prepare_skills.sh      # pin + flatten android/skills
-AGENT_CONFIGS="claude-code|anthropic/claude-haiku-5-5|medium" scripts/run_matrix.sh pilot
-scripts/run_matrix.sh core && scripts/run_matrix.sh targeted
+export AGENT_CONFIGS="claude-code|anthropic/claude-haiku-5-5|medium|"   # agent|model|effort|version
+scripts/run_matrix.sh pilot    # 10 tasks, k=1, separate output
+scripts/run_matrix.sh targeted # 9 targeted tasks, C0/C1/C2, k=5
+scripts/run_matrix.sh core     # remaining tasks, C0/C1, k=3
 python3 scripts/analyze.py     # writes results/summary.md and results/trials.csv
 ```
 
-The run script is idempotent: re-run it after a crash and it skips finished jobs.
+For each task, the run script runs Google's reference solution (the oracle) first and drops the task if it fails. Then it runs every condition and deletes the task image. Re-run it after a crash or preemption: it resumes interrupted jobs and skips finished ones. Raw output goes to `jobs/oracle`, `jobs/pilot` and `jobs/main`.
