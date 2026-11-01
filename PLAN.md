@@ -206,13 +206,17 @@ scripts/check_machine.sh                             # prints a verdict and a su
 2. Create `%UserProfile%\.wslconfig` **before** installing Ubuntu:
    ```ini
    [wsl2]
-   memory=28GB          # on a 32 GB PC; generally total RAM minus 4–8 GB for Windows
-   processors=8         # your logical processor count (Task Manager → Performance → CPU)
+   # RAM for Linux: total RAM minus 4-8 GB for Windows (28GB on a 32 GB PC)
+   memory=28GB
+   # Your logical processor count (Task Manager > Performance > CPU)
+   processors=8
    swap=8GB
 
    [general]
-   distributionInstallPath=D:\\WSL   # optional: put Ubuntu's disk on the drive with free space
+   # Optional: put Ubuntu's disk on the drive that has the free space
+   distributionInstallPath=D:\\WSL
    ```
+   Keep comments on their own lines; WSL may ignore a setting with a comment after it.
    By default WSL2 gets only **50% of your RAM**, and Ubuntu's disk goes on `C:`.
 3. In PowerShell, run `wsl --install -d Ubuntu-24.04`, then open Ubuntu from the Start menu and create a username and password.
 4. Give your Linux user access to KVM on every start. In Ubuntu, run `sudo nano /etc/wsl.conf` and add:
