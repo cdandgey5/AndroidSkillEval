@@ -22,7 +22,8 @@ if grep -qi microsoft /proc/version 2>/dev/null; then warn "Running in WSL2: kee
 
 echo "Virtualization"
 if [[ -e /dev/kvm ]]; then
-  [[ -r /dev/kvm && -w /dev/kvm ]] && pass "/dev/kvm is usable" || fail "/dev/kvm exists but isn't writable: sudo usermod -aG kvm \$USER, then log out and in"
+  [[ -r /dev/kvm && -w /dev/kvm ]] && pass "/dev/kvm is usable" \
+    || fail "/dev/kvm exists but isn't writable: sudo usermod -aG kvm \$USER, then log out and in (WSL2: also the /etc/wsl.conf boot line in PLAN.md 6.1)"
 else
   fail "/dev/kvm missing: enable VT-x/AMD-V (SVM) in BIOS; on WSL2 needs Windows 11 (nestedVirtualization is on by default)"
 fi

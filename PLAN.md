@@ -198,18 +198,33 @@ scripts/check_machine.sh                             # prints a verdict and a su
 ```
 
 **Windows 11 setup (WSL2):**
-1. Turn on virtualization in BIOS (Intel VT-x or AMD SVM). Then, in PowerShell, run `wsl --install -d Ubuntu-24.04`.
-2. Create `%UserProfile%\.wslconfig`. By default WSL2 gets only **50% of your RAM**:
+"Ubuntu" here is a Windows app from Microsoft (WSL2): a small Linux that runs in a window inside Windows. There's no dual boot and no partitioning, and `wsl --unregister Ubuntu-24.04` removes it. Docker Desktop also runs on WSL2 under the hood. Two things rule out Docker Desktop alone:
+- Google's emulator docs say KVM isn't supported in Docker Desktop on Windows.
+- Google's image builder refuses to run on Windows (`check_host_os` in its `prebuild.py`).
+
+1. Turn on virtualization in BIOS (Intel VT-x or AMD SVM). In Task Manager → Performance → CPU, "Virtualization: Enabled" confirms it.
+2. Create `%UserProfile%\.wslconfig` **before** installing Ubuntu:
    ```ini
    [wsl2]
    memory=28GB          # on a 32 GB PC; generally total RAM minus 4–8 GB for Windows
    processors=8         # your logical processor count (Task Manager → Performance → CPU)
    swap=8GB
+
+   [general]
+   distributionInstallPath=D:\\WSL   # optional: put Ubuntu's disk on the drive with free space
    ```
-   Then run `wsl --shutdown` and reopen Ubuntu. Nested virtualization (KVM) is on by default on Windows 11.
-3. Inside Ubuntu, run the native Linux setup above. Use Docker Engine installed **inside** Ubuntu, not Docker Desktop: Docker Desktop runs containers in its own VM, and passing `/dev/kvm` through it is unreliable.
-4. **Disk:** WSL stores Linux files in a virtual disk on `C:`. If `C:` lacks about 300 GB free, move the distro to a bigger drive with `wsl --export` / `wsl --import` before you start.
-5. Keep the PC awake for the whole run:
+   By default WSL2 gets only **50% of your RAM**, and Ubuntu's disk goes on `C:`.
+3. In PowerShell, run `wsl --install -d Ubuntu-24.04`, then open Ubuntu from the Start menu and create a username and password.
+4. Give your Linux user access to KVM on every start. In Ubuntu, run `sudo nano /etc/wsl.conf` and add:
+   ```ini
+   [boot]
+   systemd=true
+   command = chown root:kvm /dev/kvm && chmod 660 /dev/kvm
+   ```
+   Then run `wsl --shutdown` in PowerShell, and reopen Ubuntu.
+5. Inside Ubuntu, run the native Linux setup above. That installs Docker Engine **inside** Ubuntu.
+   - If you already have Docker Desktop, either quit it, or turn off Settings → Resources → WSL integration for Ubuntu. Otherwise `docker` in Ubuntu talks to Docker Desktop instead.
+6. Keep the PC awake for the whole run:
    - Set Windows sleep to "Never" while plugged in.
    - Pause Windows Update for the run's duration, since a forced restart stops the run. (It resumes safely, but you lose hours.)
 
