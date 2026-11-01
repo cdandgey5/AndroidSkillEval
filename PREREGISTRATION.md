@@ -11,8 +11,8 @@ Commit this file before any agent run. The commit timestamp shows that the hypot
 
 ## Study size (choose one before the first main run, and write it here)
 - **Full:** all 100 tasks. Targeted tasks at k=5 (C0/C1/C2), the other 91 at k=3 (C0/C1). 681 agent trials. H2 margin −10 pp.
-- **Lean:** the 9 targeted tasks at k=3 (C0/C1/C2), plus a fixed sample of 40 other tasks at k=2 (C0/C1). 241 agent trials. H2 margin **−20 pp**, because 40 tasks at k=2 give a CI of roughly ±15 pp. The sample is the 40 non-targeted tasks with the lowest sha256 of their name; `STUDY=lean scripts/run_matrix.sh plan` prints the list.
-- Chosen: _TBD_ (full / lean)
+- **Lean:** the 9 targeted tasks at k=3 (C0/C1/C2), plus the 6 harm-watch tasks and a fixed sample of 40 other tasks at k=2 (C0/C1). 265 agent trials. H2 margin **−20 pp**, because about 46 tasks at k=2 give a CI of roughly ±15 pp. The 40 are the tasks outside both slices with the lowest sha256 of their name. The full list is in `config/LEAN_TASKS.md`, and the non-targeted slice includes the harm-watch tasks.
+- **Chosen: lean** (decided 2026-11-01, before any agent run). Full may follow later as a separate, labelled extension.
 
 ## Fixed before running
 - **Dataset:** Android Bench 1.0 (`android-bench/android-bench` on Harbor Hub), 100 tasks. Each task's oracle runs first on our machine. A task whose oracle fails is dropped before any agent trial, and the results list it.

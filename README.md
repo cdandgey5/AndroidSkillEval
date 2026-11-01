@@ -20,11 +20,12 @@ Google's public registry for the task images currently rejects pulls, so the run
 
 ```bash
 uv tool install harbor
+scripts/phase0.sh              # no API key: machine check + one image build + one oracle (~1-1.5 h)
 export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY / GEMINI_API_KEY
 scripts/prepare_skills.sh      # pin + flatten android/skills
 export AGENT_CONFIGS="claude-code|anthropic/claude-haiku-5-5|medium|"   # agent|model|effort|version
 scripts/run_matrix.sh pilot    # 10 tasks, k=1, separate output
-export STUDY=lean              # optional: 241 trials instead of 681 (see PREREGISTRATION.md)
+export STUDY=lean              # the chosen design: 265 trials instead of 681 (see PREREGISTRATION.md)
 scripts/run_matrix.sh plan     # preview tasks and trial counts
 scripts/run_matrix.sh targeted # 9 targeted tasks, C0/C1/C2
 scripts/run_matrix.sh core     # the other tasks, C0/C1

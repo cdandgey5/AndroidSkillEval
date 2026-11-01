@@ -18,7 +18,7 @@
 #
 # Study size (pick once, before the first main run; job names include k):
 #   STUDY=full (default): all 100 tasks; k=5 targeted (C0/C1/C2), k=3 others (C0/C1)
-#   STUDY=lean: 9 targeted at k=3 + a fixed sample of 40 others at k=2  (~1/3 of the trials)
+#   STUDY=lean: 9 targeted at k=3, plus the 6 harm-watch tasks and a fixed sample of 40 others at k=2
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -51,7 +51,9 @@ PILOT_TASKS=(  # 3 tier-1 targeted + 7 non-targeted of mixed size
 COMMON_ARGS=(-r 2 -n "$N_CONCURRENT" -q -y "${EXTRA_HARBOR_ARGS[@]}")
 
 mapfile -t TARGETED < <(python3 -c "import json;[print(t['task']) for t in json.load(open('$ROOT/config/targeted_tasks.json'))['tasks']]")
+mapfile -t HARM_WATCH < <(python3 -c "import json;[print(t) for t in json.load(open('$ROOT/config/targeted_tasks.json'))['harm_watch']['tasks']]")
 is_targeted() { [[ " ${TARGETED[*]} " == *" $1 "* ]]; }
+is_harm_watch() { [[ " ${HARM_WATCH[*]} " == *" $1 "* ]]; }
 skill_for() { python3 -c "import json,sys;print(next(t['skill'] for t in json.load(open('$ROOT/config/targeted_tasks.json'))['tasks'] if t['task']==sys.argv[1]))" "$1"; }
 
 job_done() {
@@ -160,9 +162,9 @@ plan_task() {  # full-study plan for one task
   else run_task_block "$1" "$K_CORE" C0 C1; fi
 }
 
-sample_others() {  # fixed, reproducible sample: non-targeted tasks ordered by sha256 of their name
+sample_others() {  # fixed, reproducible sample: other tasks ordered by sha256 of their name
   local t
-  for t in "$@"; do is_targeted "$t" || echo "$(printf '%s' "$t" | sha256sum | cut -c1-16) $t"; done \
+  for t in "$@"; do is_targeted "$t" || is_harm_watch "$t" || echo "$(printf '%s' "$t" | sha256sum | cut -c1-16) $t"; done \
     | sort | head -n "$SAMPLE" | cut -d' ' -f2
 }
 
@@ -189,10 +191,13 @@ case "$PHASE" in
     JOBS="$ROOT/jobs/main"; mkdir -p "$JOBS"
     mapfile -t TASKS < <(all_tasks)
     (( ${#TASKS[@]} == 100 )) || { echo "expected 100 tasks, got ${#TASKS[@]}; check 'harbor download $DATASET'" >&2; exit 1; }
-    if [[ -n "$SAMPLE" ]]; then mapfile -t TASKS < <(printf '%s\n' "${TARGETED[@]}"; sample_others "${TASKS[@]}"); fi
+    if [[ -n "$SAMPLE" ]]; then mapfile -t TASKS < <(printf '%s\n' "${TARGETED[@]}" "${HARM_WATCH[@]}"; sample_others "${TASKS[@]}"); fi
     if [[ "$PHASE" == plan ]]; then
       n_t=0; n_o=0
-      for t in "${TASKS[@]}"; do if is_targeted "$t"; then n_t=$((n_t + 1)); else n_o=$((n_o + 1)); echo "other     $t"; fi; done
+      for t in "${TASKS[@]}"; do
+        if is_targeted "$t"; then n_t=$((n_t + 1))
+        else n_o=$((n_o + 1)); if is_harm_watch "$t"; then echo "harmwatch $t"; else echo "other     $t"; fi; fi
+      done
       printf 'targeted  %s\n' "${TARGETED[@]}"
       echo "STUDY=${STUDY:-full}: $n_t targeted x 3 conditions x k=$K_TARGETED + $n_o others x 2 conditions x k=$K_CORE" \
            "= $(( (n_t * 3 * K_TARGETED + n_o * 2 * K_CORE) * ${#AGENT_CONFIGS[@]} )) agent trials, $(( n_t + n_o )) image builds + oracles"

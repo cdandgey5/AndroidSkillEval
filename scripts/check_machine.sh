@@ -54,4 +54,5 @@ if (( ok )); then
   (( threads < 8 )) && echo "         and EXTRA_HARBOR_ARGS=\"--cpus ignore\""
 else
   echo "Verdict: fix the FAIL lines above first (or use the cloud VM in PLAN.md section 6)."
+  exit 1
 fi

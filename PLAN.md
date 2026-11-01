@@ -217,11 +217,11 @@ scripts/check_machine.sh                             # prints a verdict and a su
 
 | Study size | What runs | 32 GB PC (1 trial at a time) | 64 GB PC (2 at a time) |
 |---|---|---|---|
-| **Lean** (`STUDY=lean`) | 9 targeted tasks × 3 setups × 3 tries, plus 40 other tasks × 2 setups × 2 tries = 241 trials, 49 image builds | **~6–7 days of machine time** | ~4 days |
+| **Lean** (`STUDY=lean`, chosen) | 9 targeted tasks × 3 setups × 3 tries, plus 46 other tasks (6 harm watch + 40 fixed sample) × 2 setups × 2 tries = 265 trials, 55 image builds. List: `config/LEAN_TASKS.md` | **~7 days of machine time** | ~4 days |
 | **Full** (default) | 100 tasks, 681 trials, 100 image builds | ~17 days | ~10–11 days |
 
 - **Assumptions:** about 30 min per trial, 25 min per oracle and 20 min per image build. Many tasks are small, so real numbers may be lower.
-- **It doesn't have to run nonstop.** Stop it any time (Ctrl+C, a reboot, overnight-only runs) and re-run the same command. Finished work is kept, and only the interrupted trial restarts. Six days of machine time can be 12 nights.
+- **It doesn't have to run nonstop.** Stop it any time (Ctrl+C, a reboot, overnight-only runs) and re-run the same command. Finished work is kept, and only the interrupted trial restarts. Seven days of machine time can be about 14 nights.
 - **Maybe 2 at a time on 32 GB:** the 32 GB per trial is a cap, not what a trial actually uses. In the pilot, watch `docker stats`. If one trial peaks under about 13 GB, try `N_CONCURRENT=2` and check that no trials fail from lack of memory. That would roughly halve the trial time.
 - **Lean vs full:** the lean study answers the same questions with wider error bars. It can only rule out *large* harm on general tasks (more than about 20 points), versus 10 points for the full study. Start lean, publish post 1, and run the full study later only if the results justify it.
 
@@ -262,10 +262,10 @@ gcloud compute instances create android-bench \
 | Image builds + oracle (100 tasks) | 100 each | | |
 | Targeted: 9 tasks × C0/C1/C2 × k=5 | 135 trials | | |
 | Non-targeted: 91 tasks × C0/C1 × k=3 | 546 trials | | |
-| Machine time | | full: 8–17 days depending on RAM; lean: ~6–7 days on 32 GB | full: ~9 days (~220 h); lean: ~3–4 days |
+| Machine time | | full: 8–17 days depending on RAM; lean: ~7 days on 32 GB | full: ~9 days (~220 h); lean: ~3–4 days |
 | Machine cost | | ~$10–20 electricity | ~$290 on-demand (about $1.55/h); Spot is typically 60–90% less. Disk ~$35. |
-| API (assumed $0.20–0.80 per trial with a Haiku-class model in Claude Code; the pilot measures it) | ~700 full / ~240 lean | full ~$140–560, lean ~$50–200 | same |
-| **Total** | | **full ~$150–580, lean ~$60–220** | **full ~$220–900** |
+| API (assumed $0.20–0.80 per trial with a Haiku-class model in Claude Code; the pilot measures it) | ~700 full / 265 lean | full ~$140–560, lean ~$55–210 | same |
+| **Total** | | **full ~$150–580, lean ~$65–230** | **full ~$220–900** |
 
 **Cost guards:**
 - Set hard spend caps in the provider console before the main runs.
@@ -282,8 +282,7 @@ Each phase has an exit gate. Don't start the next phase until it passes.
 - [ ] Review `PREREGISTRATION.md` and `config/targeted_tasks.json`, and commit any edits **before** any agent run.
 - [ ] Set up your PC (section 6.1) or a VM (6.2), then run `scripts/check_machine.sh` until it says OK.
 - [ ] Report the registry outage (section 6.0).
-- [ ] Build one image and run its oracle. The first build includes the shared SDK image, about 1 hour:
-  `scripts/build_image.sh airbnb__lottie-android-pr_2427 && harbor run -d android-bench/android-bench -i "*airbnb__lottie-android-pr_2427" -a oracle`
+- [ ] Run `scripts/phase0.sh`. It checks the machine, pins the skills, builds one image (the first build includes the shared SDK image, about 1 hour) and runs its oracle. It needs no API key and logs to `jobs/phase0.log`.
 - **Gate:** the oracle passes on that task. That proves KVM, Docker, the local build and Harbor all work.
 
 ### Phase 1: Pilot (days 3–4)
@@ -346,9 +345,11 @@ AndroidSkillEval/
 ├── README.md                   # how to reproduce
 ├── config/
 │   ├── targeted_tasks.json     # frozen targeted slice + harm-watch slice
+│   ├── LEAN_TASKS.md           # exact task list for the lean study
 │   └── SKILLS_LOCK.md          # generated: skill names, sizes, hashes
 ├── scripts/
 │   ├── prepare_skills.sh       # pin + flatten android/skills
+│   ├── phase0.sh               # one command: machine check + one build + one oracle (no API key)
 │   ├── check_machine.sh        # can this PC run it? suggests N_CONCURRENT
 │   ├── build_image.sh          # build a task image locally (registry outage workaround)
 │   ├── run_matrix.sh           # pilot | targeted | core (resumable)
@@ -422,7 +423,7 @@ AndroidSkillEval/
 
 1. **Read `PREREGISTRATION.md`,** change anything you disagree with, and commit it. That timestamp matters.
 2. **Run `scripts/check_machine.sh` on your PC** (in Ubuntu on WSL2 if you're on Windows 11). If it says OK, skip Google Cloud. If not, use the VM in section 6.2.
-3. **Build one image and run its oracle** (Phase 0, last step). If it passes, the hardest risks are gone.
+3. **Run `scripts/phase0.sh`** (about 1–1.5 hours, no API key, no cost). If it prints PASS, the hardest risks are gone.
 4. Report the registry outage (section 6.0).
 5. Add API keys, set spend caps, and run `scripts/run_matrix.sh pilot`.
 
@@ -445,7 +446,13 @@ AndroidSkillEval/
   - Found that Google's image registry rejects all pulls, and added the local image build (`scripts/build_image.sh`) and the fallback in `run_matrix.sh`.
   - Fixed re-runs that rebuilt images for already-finished tasks.
   - Added the own-PC option (Linux / Windows 11 WSL2), `scripts/check_machine.sh`, `EXTRA_HARBOR_ARGS` for under-8-thread PCs, local timing, and a split budget.
-- **2026-10-29, third pass ("do we need 17 days?"):** added `STUDY=lean` (241 trials, about 6–7 days on a 32 GB PC), the `plan` command to preview a study, the lean H2 margin (−20 pp), and the note that runs can stop and resume.
+- **2026-10-29, third pass ("do we need 17 days?"):** added `STUDY=lean`, the `plan` command to preview a study, the lean H2 margin (−20 pp), and the note that runs can stop and resume.
+- **2026-11-01, go decision:**
+  - Lean chosen and recorded in `PREREGISTRATION.md`.
+  - The harm-watch tasks are now included in lean, because the random sample had none, which left a pre-registered slice empty. Lean is now 265 trials and 55 builds.
+  - The exact lean list is committed in `config/LEAN_TASKS.md`.
+  - Added the one-command `scripts/phase0.sh`.
+  - Google's registry was still rejecting pulls on 2026-11-01.
 
 ## Sources
 - [Android Bench leaderboard](https://developer.android.com/bench) and [methodology v2](https://developer.android.com/bench/methodology/2)
