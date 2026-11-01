@@ -202,8 +202,8 @@ scripts/check_machine.sh                             # prints a verdict and a su
 2. Create `%UserProfile%\.wslconfig`. By default WSL2 gets only **50% of your RAM**:
    ```ini
    [wsl2]
-   memory=56GB          # total RAM minus ~8 GB for Windows
-   processors=16        # your logical processor count
+   memory=28GB          # on a 32 GB PC; generally total RAM minus 4–8 GB for Windows
+   processors=8         # your logical processor count (Task Manager → Performance → CPU)
    swap=8GB
    ```
    Then run `wsl --shutdown` and reopen Ubuntu. Nested virtualization (KVM) is on by default on Windows 11.

@@ -14,8 +14,10 @@ arch="$(uname -m)"
 threads="$(nproc)"
 ram_gb="$(awk '/MemTotal/ {printf "%d", $2/1024/1024}' /proc/meminfo)"
 (( threads >= 8 )) && pass "CPU threads: $threads" || warn "CPU threads: $threads (fewer than 8: set EXTRA_HARBOR_ARGS=\"--cpus ignore\")"
-(( ram_gb >= 30 )) && pass "RAM visible to Linux: ${ram_gb} GB" \
-  || fail "RAM visible to Linux: ${ram_gb} GB (need ~32 GB per trial; on WSL2 raise 'memory=' in %UserProfile%\\.wslconfig)"
+# Each trial is capped at 32 GB but typically uses much less, so ~24 GB runs one trial at a time.
+if (( ram_gb >= 30 )); then pass "RAM visible to Linux: ${ram_gb} GB"
+elif (( ram_gb >= 24 )); then warn "RAM visible to Linux: ${ram_gb} GB (enough for 1 trial at a time; watch 'docker stats' in the pilot)"
+else fail "RAM visible to Linux: ${ram_gb} GB (need at least ~24 GB; on WSL2 set 'memory=' in %UserProfile%\\.wslconfig, e.g. 28GB on a 32 GB PC)"; fi
 if grep -qi microsoft /proc/version 2>/dev/null; then warn "Running in WSL2: keep Windows awake, disable sleep, and use Docker Engine inside this distro (not Docker Desktop)"; fi
 
 echo "Virtualization"
