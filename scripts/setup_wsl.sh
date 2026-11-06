@@ -91,8 +91,9 @@ say "6/6 Done"
 cat <<EOF
 
 Next:
-  1. In Windows PowerShell, run:   wsl --shutdown
-  2. Open Ubuntu again from the Start menu, then run:
+  1. Restart WSL. Either type this here (note the .exe):   wsl.exe --shutdown
+     or run   wsl --shutdown   in Windows PowerShell. Plain 'wsl' inside Ubuntu is a different tool.
+  2. Open "Ubuntu 24.04 LTS" from the Start menu again, then run:
        cd ~/AndroidSkillEval && scripts/check_machine.sh
      Every line should say OK or WARN, with no FAIL. Then run scripts/phase0.sh.
 EOF

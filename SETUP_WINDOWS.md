@@ -119,11 +119,12 @@ bash scripts/setup_wsl.sh
 
 Keep the project where it is (`~/AndroidSkillEval`, inside Ubuntu). Don't move it to a Windows folder such as `/mnt/c/...`: builds there are much slower and file permissions break.
 
-**D2.** Restart Ubuntu so the settings take effect. In **PowerShell**, run:
-```powershell
-wsl --shutdown
-```
-Wait 10 seconds, then open **Ubuntu 24.04** from the Start menu again.
+**D2.** Restart Ubuntu so the settings take effect. Either:
+- in **Ubuntu**, type `wsl.exe --shutdown` (with **.exe**), or
+- in **PowerShell**, type `wsl --shutdown`.
+
+Plain `wsl --shutdown` inside Ubuntu doesn't work, because `wsl` there is an unrelated Linux tool. The Ubuntu window closes. Wait 10 seconds, then open **Ubuntu 24.04 LTS** from the Start menu again.
+- Opening Ubuntu from PowerShell starts it in a Windows folder like `/mnt/c/WINDOWS/system32`. Always run `cd ~/AndroidSkillEval` before running the project's scripts.
 
 ---
 

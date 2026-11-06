@@ -23,7 +23,7 @@ if grep -qi microsoft /proc/version 2>/dev/null; then warn "Running in WSL2: kee
 echo "Virtualization"
 if [[ -e /dev/kvm ]]; then
   [[ -r /dev/kvm && -w /dev/kvm ]] && pass "/dev/kvm is usable" \
-    || fail "/dev/kvm exists but isn't writable: run 'bash scripts/setup_wsl.sh', then 'wsl --shutdown' in PowerShell and reopen Ubuntu"
+    || fail "/dev/kvm exists but isn't writable: run 'bash scripts/setup_wsl.sh', then 'wsl.exe --shutdown' and reopen Ubuntu"
 else
   fail "/dev/kvm missing: turn on virtualization in BIOS (Intel VT-x / AMD SVM); WSL2 needs Windows 11 (see SETUP_WINDOWS.md)"
 fi
@@ -35,7 +35,7 @@ if command -v docker >/dev/null && [[ "$(readlink -m "$(command -v docker)")" ==
 elif command -v docker >/dev/null; then
   command -v dockerd >/dev/null || warn "docker client found but no Docker Engine (dockerd): run 'bash scripts/setup_wsl.sh'"
   docker info >/dev/null 2>&1 && pass "docker: $(docker --version | cut -d, -f1)" \
-    || fail "docker installed but not usable: run 'bash scripts/setup_wsl.sh', then 'wsl --shutdown' in PowerShell and reopen Ubuntu"
+    || fail "docker installed but not usable: run 'bash scripts/setup_wsl.sh', then 'wsl.exe --shutdown' and reopen Ubuntu"
   docker compose version >/dev/null 2>&1 && pass "docker compose plugin" || fail "docker compose plugin missing: curl -fsSL https://get.docker.com | sudo sh"
   root="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null)" || root=/var/lib/docker
 else
