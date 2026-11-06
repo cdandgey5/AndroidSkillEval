@@ -197,40 +197,14 @@ git clone https://github.com/cdandgey5/AndroidSkillEval && cd AndroidSkillEval
 scripts/check_machine.sh                             # prints a verdict and a suggested N_CONCURRENT
 ```
 
-**Windows 11 setup (WSL2):**
-"Ubuntu" here is a Windows app from Microsoft (WSL2): a small Linux that runs in a window inside Windows. There's no dual boot and no partitioning, and `wsl --unregister Ubuntu-24.04` removes it. Docker Desktop also runs on WSL2 under the hood. Two things rule out Docker Desktop alone:
-- Google's emulator docs say KVM isn't supported in Docker Desktop on Windows.
-- Google's image builder refuses to run on Windows (`check_host_os` in its `prebuild.py`).
-
-1. Turn on virtualization in BIOS (Intel VT-x or AMD SVM). In Task Manager → Performance → CPU, "Virtualization: Enabled" confirms it.
-2. Create `%UserProfile%\.wslconfig` **before** installing Ubuntu:
-   ```ini
-   [wsl2]
-   # RAM for Linux: total RAM minus 4-8 GB for Windows (28GB on a 32 GB PC)
-   memory=28GB
-   # Your logical processor count (Task Manager > Performance > CPU)
-   processors=8
-   swap=8GB
-
-   [general]
-   # Optional: put Ubuntu's disk on the drive that has the free space
-   distributionInstallPath=D:\\WSL
-   ```
-   Keep comments on their own lines; WSL may ignore a setting with a comment after it.
-   By default WSL2 gets only **50% of your RAM**, and Ubuntu's disk goes on `C:`.
-3. In PowerShell, run `wsl --install -d Ubuntu-24.04`, then open Ubuntu from the Start menu and create a username and password.
-4. Give your Linux user access to KVM on every start. In Ubuntu, run `sudo nano /etc/wsl.conf` and add:
-   ```ini
-   [boot]
-   systemd=true
-   command = chown root:kvm /dev/kvm && chmod 660 /dev/kvm
-   ```
-   Then run `wsl --shutdown` in PowerShell, and reopen Ubuntu.
-5. Inside Ubuntu, run the native Linux setup above. That installs Docker Engine **inside** Ubuntu.
-   - If you already have Docker Desktop, either quit it, or turn off Settings → Resources → WSL integration for Ubuntu. Otherwise `docker` in Ubuntu talks to Docker Desktop instead.
-6. Keep the PC awake for the whole run:
-   - Set Windows sleep to "Never" while plugged in.
-   - Pause Windows Update for the run's duration, since a forced restart stops the run. (It resumes safely, but you lose hours.)
+**Windows 11 setup:** follow **[SETUP_WINDOWS.md](SETUP_WINDOWS.md)**. It's step by step, about 30–45 minutes, and `scripts/setup_wsl.sh` installs everything inside Ubuntu.
+- "Ubuntu" there is a Windows app from Microsoft (WSL2): no dual boot, no partitioning, and one command removes it.
+- Docker Desktop alone won't work, for two reasons:
+  - Google's emulator docs say KVM isn't supported in Docker Desktop on Windows.
+  - Google's image builder refuses to run on Windows (`check_host_os` in its `prebuild.py`).
+- So the setup is WSL2 Ubuntu with Docker Engine inside it, plus:
+  - a boot line that makes `/dev/kvm` usable
+  - `instanceIdleTimeout=-1`, so closing the Ubuntu window doesn't stop a run
 
 **How long it takes locally** (rough; the pilot measures real numbers):
 
@@ -362,12 +336,14 @@ AndroidSkillEval/
 ├── PLAN.md                     # this file
 ├── PREREGISTRATION.md          # hypotheses + analysis, committed before runs
 ├── README.md                   # how to reproduce
+├── SETUP_WINDOWS.md            # step-by-step Windows 11 install guide
 ├── config/
 │   ├── targeted_tasks.json     # frozen targeted slice + harm-watch slice
 │   ├── LEAN_TASKS.md           # exact task list for the lean study
 │   └── SKILLS_LOCK.md          # generated: skill names, sizes, hashes
 ├── scripts/
 │   ├── prepare_skills.sh       # pin + flatten android/skills
+│   ├── setup_wsl.sh            # one-time install inside Ubuntu: Docker Engine, uv, Harbor 0.25.0, KVM access
 │   ├── phase0.sh               # one command: machine check + one build + one oracle (no API key)
 │   ├── check_machine.sh        # can this PC run it? suggests N_CONCURRENT
 │   ├── build_image.sh          # build a task image locally (registry outage workaround)
@@ -472,6 +448,13 @@ AndroidSkillEval/
   - The exact lean list is committed in `config/LEAN_TASKS.md`.
   - Added the one-command `scripts/phase0.sh`.
   - Google's registry was still rejecting pulls on 2026-11-01.
+
+- **2026-11-06, Windows install guide:**
+  - Added `SETUP_WINDOWS.md` and `scripts/setup_wsl.sh`, which pins Harbor 0.25.0, the version the scripts were checked against.
+  - The script edits `/etc/wsl.conf` without dropping Ubuntu's default-user line.
+  - Added `instanceIdleTimeout=-1`, so closing the window doesn't stop a run.
+  - In WSL, `check_machine.sh` now shows real free space on the Windows drives.
+  - Added `.gitattributes`, which forces LF line endings on scripts.
 
 ## Sources
 - [Android Bench leaderboard](https://developer.android.com/bench) and [methodology v2](https://developer.android.com/bench/methodology/2)

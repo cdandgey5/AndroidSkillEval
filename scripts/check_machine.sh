@@ -23,26 +23,36 @@ if grep -qi microsoft /proc/version 2>/dev/null; then warn "Running in WSL2: kee
 echo "Virtualization"
 if [[ -e /dev/kvm ]]; then
   [[ -r /dev/kvm && -w /dev/kvm ]] && pass "/dev/kvm is usable" \
-    || fail "/dev/kvm exists but isn't writable: sudo usermod -aG kvm \$USER, then log out and in (WSL2: also the /etc/wsl.conf boot line in PLAN.md 6.1)"
+    || fail "/dev/kvm exists but isn't writable: run 'bash scripts/setup_wsl.sh', then 'wsl --shutdown' in PowerShell and reopen Ubuntu"
 else
-  fail "/dev/kvm missing: enable VT-x/AMD-V (SVM) in BIOS; on WSL2 needs Windows 11 (nestedVirtualization is on by default)"
+  fail "/dev/kvm missing: turn on virtualization in BIOS (Intel VT-x / AMD SVM); WSL2 needs Windows 11 (see SETUP_WINDOWS.md)"
 fi
 
 echo "Software"
 if command -v docker >/dev/null; then
-  docker info >/dev/null 2>&1 && pass "docker: $(docker --version | cut -d, -f1)" || fail "docker installed but not usable by this user: sudo usermod -aG docker \$USER"
+  docker info >/dev/null 2>&1 && pass "docker: $(docker --version | cut -d, -f1)" \
+    || fail "docker installed but not usable: run 'bash scripts/setup_wsl.sh', then 'wsl --shutdown' in PowerShell and reopen Ubuntu"
   docker compose version >/dev/null 2>&1 && pass "docker compose plugin" || fail "docker compose plugin missing: curl -fsSL https://get.docker.com | sudo sh"
   root="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null)" || root=/var/lib/docker
 else
-  fail "docker missing: curl -fsSL https://get.docker.com | sudo sh"
+  fail "docker missing: run 'bash scripts/setup_wsl.sh'"
   root=/var/lib
 fi
 while [[ ! -d "$root" ]]; do root="$(dirname "$root")"; done  # nearest existing dir
 free_gb="$(df -BG --output=avail "$root" 2>/dev/null | tail -1 | tr -dc 0-9)"
 (( ${free_gb:-0} >= 300 )) && pass "free disk for Docker ($root): ${free_gb} GB" \
   || fail "free disk for Docker ($root): ${free_gb:-?} GB (need ~300 GB: shared SDK image + repo bases + one task image + build cache)"
+if grep -qi microsoft /proc/version 2>/dev/null; then
+  # Inside WSL the Ubuntu disk is a growable file on a Windows drive, so df above shows its
+  # maximum size, not real free space. Show the Windows drives so the real space can be checked.
+  warn "WSL: Ubuntu's disk lives on a Windows drive (C: unless you set distributionInstallPath). That drive needs ~300 GB free:"
+  for d in /mnt/[a-z]; do
+    [[ -d "$d" ]] && df -BG --output=avail "$d" >/dev/null 2>&1 \
+      && echo "          ${d#/mnt/}: $(df -BG --output=avail "$d" | tail -1 | tr -dc 0-9) GB free"
+  done
+fi
 command -v uv >/dev/null && pass "uv" || fail "uv missing: curl -LsSf https://astral.sh/uv/install.sh | sh"
-command -v harbor >/dev/null && pass "harbor $(harbor --version 2>/dev/null)" || fail "harbor missing: uv tool install harbor"
+command -v harbor >/dev/null && pass "harbor $(harbor --version 2>/dev/null)" || fail "harbor missing: run 'bash scripts/setup_wsl.sh'"
 
 echo "Task images"
 REG=us-central1-docker.pkg.dev; REPO=android-bench-public/android-bench-tasks/airbnb__lottie-android-pr_2427
