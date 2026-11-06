@@ -28,7 +28,9 @@ This sets up your Windows 11 PC to run the benchmark. You need about **30–45 m
 
 **A3. Free space.** Pick the drive with **about 300 GB free** (see it in File Explorer → This PC). If it's not `C:`, you'll use the "other drive" option in B1.
 
-**A4. Docker Desktop (only if you already have it).** Right-click its whale icon near the clock and choose **Quit Docker Desktop**. In its Settings → General, untick "Start Docker Desktop when you sign in". You don't need to uninstall it.
+**A4. Docker Desktop (only if you already have it).** Quitting it isn't enough. While its "WSL integration" is on, it puts its own `docker` command inside Ubuntu, and that version can't run the Android emulator. Do **one** of these:
+- **If you don't use Docker Desktop for anything else:** uninstall it. Go to Settings → Apps → Installed apps → **Docker Desktop** → Uninstall. This also deletes its own containers and images.
+- **If you use it for other projects:** open Docker Desktop → **Settings → Resources → WSL integration**. Turn **off** "Enable integration with my default WSL distro" and every distro switch, click **Apply & restart**, then quit Docker Desktop. Also untick Settings → General → "Start Docker Desktop when you sign in".
 
 ---
 
@@ -88,6 +90,12 @@ wsl -l -v
 ```
 You should see `Ubuntu-24.04` with **VERSION 2**.
 
+**If the list also shows a plain `Ubuntu`** (an older install), that's a separate Linux with its own files. Use **Ubuntu-24.04** for this project:
+- Open it with `wsl -d Ubuntu-24.04` in PowerShell, or with **"Ubuntu 24.04 LTS"** in the Start menu. The plain **"Ubuntu"** entry opens the other one.
+- After Docker Desktop is dealt with (A4), make it the default: `wsl --set-default Ubuntu-24.04`.
+- To check which one you're in, run `echo $WSL_DISTRO_NAME` inside it. It should print `Ubuntu-24.04`.
+- Leave the plain `Ubuntu` alone unless you're sure nothing in it matters. `wsl --unregister Ubuntu` deletes it and everything inside it for good.
+
 **C4 (other drive only).** Check that Ubuntu's disk went where you wanted:
 ```powershell
 Get-ChildItem HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss | ForEach-Object { Get-ItemProperty $_.PSPath } | Select-Object DistributionName, BasePath
@@ -98,7 +106,7 @@ Get-ChildItem HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss | ForEach-Obj
 
 ## Part D: Install everything else inside Ubuntu (10–15 min)
 
-**D1.** In the **Ubuntu** window, download the project and run the setup script:
+**D1.** In the **Ubuntu-24.04** window, download the project and run the setup script. The script stops with a clear message if you're in the wrong Ubuntu, or if Docker Desktop's `docker` is still present (A4).
 ```bash
 cd ~
 git clone https://github.com/cdandgey5/AndroidSkillEval

@@ -29,7 +29,11 @@ else
 fi
 
 echo "Software"
-if command -v docker >/dev/null; then
+if command -v docker >/dev/null && [[ "$(readlink -m "$(command -v docker)")" == *docker-desktop* ]]; then
+  fail "docker here is Docker Desktop's, which can't pass KVM to containers: see SETUP_WINDOWS.md Part D (Docker Desktop)"
+  root=/var/lib
+elif command -v docker >/dev/null; then
+  command -v dockerd >/dev/null || warn "docker client found but no Docker Engine (dockerd): run 'bash scripts/setup_wsl.sh'"
   docker info >/dev/null 2>&1 && pass "docker: $(docker --version | cut -d, -f1)" \
     || fail "docker installed but not usable: run 'bash scripts/setup_wsl.sh', then 'wsl --shutdown' in PowerShell and reopen Ubuntu"
   docker compose version >/dev/null 2>&1 && pass "docker compose plugin" || fail "docker compose plugin missing: curl -fsSL https://get.docker.com | sudo sh"
