@@ -60,8 +60,19 @@ else
 fi
 
 say "3/6 KVM access for the Android emulator"
+# Three layers, because WSL setups differ: the kvm group (udev usually gives /dev/kvm to it),
+# a udev rule that opens it up, and a WSL boot command for systems where udev doesn't run.
+run sudo groupadd -f kvm
+run sudo usermod -aG kvm "$ME"
+UDEV_RULE=/etc/udev/rules.d/99-android-bench-kvm.rules
+if [[ ! -f "$UDEV_RULE" ]]; then
+  echo "+ write $UDEV_RULE"
+  [[ -n "${DRY_RUN:-}" ]] || echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee "$UDEV_RULE" >/dev/null
+fi
+if [[ -e /dev/kvm ]]; then
+  run sudo chmod 666 /dev/kvm  # takes effect now; the rule and boot command keep it after restarts
+fi
 if in_wsl; then
-  # Make /dev/kvm usable by your user on every WSL start, and make sure systemd is on.
   if ! grep -q 'chmod 666 /dev/kvm' /etc/wsl.conf 2>/dev/null; then
     if grep -q '^\[boot\]' /etc/wsl.conf 2>/dev/null; then
       run sudo sed -i '/^\[boot\]/a command = chmod 666 /dev/kvm' /etc/wsl.conf
@@ -73,10 +84,8 @@ if in_wsl; then
   grep -q '^systemd *= *true' /etc/wsl.conf 2>/dev/null || [[ -n "${DRY_RUN:-}" ]] \
     || sudo sed -i '/^\[boot\]/a systemd=true' /etc/wsl.conf
   echo "/etc/wsl.conf now contains:"; sed 's/^/    /' /etc/wsl.conf 2>/dev/null || true
-else
-  run sudo groupadd -f kvm
-  run sudo usermod -aG kvm "$ME"
 fi
+if [[ -e /dev/kvm ]]; then echo "/dev/kvm now: $(ls -l /dev/kvm)"; else echo "/dev/kvm not found: turn on virtualization in BIOS (SETUP_WINDOWS.md A2)"; fi
 
 say "4/6 uv (Python tool installer)"
 if ! command -v uv >/dev/null && [[ ! -x "$HOME/.local/bin/uv" ]]; then
