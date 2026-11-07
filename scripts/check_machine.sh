@@ -65,10 +65,13 @@ if [[ "$resp" == *'"token"'* ]]; then pass "Google's image registry serves pulls
 else warn "Google's image registry rejects pulls ($(echo "$resp" | grep -o 'requires billing[^.]*' || echo 'error')): images will be built locally (scripts/build_image.sh), ~10-30 min per task"; fi
 
 echo
-slots=$(( ram_gb / 32 )); cpu_slots=$(( threads / 8 )); (( cpu_slots < slots )) && slots=$cpu_slots; (( slots < 1 )) && slots=1
+slots=$(( ram_gb / 32 )); cpu_slots=$(( threads / 8 ))
+if (( cpu_slots < slots )); then slots=$cpu_slots; fi
+if (( slots < 1 )); then slots=1; fi
 if (( ok )); then
   echo "Verdict: this machine can run the benchmark. Suggested: N_CONCURRENT=$slots"
-  (( threads < 8 )) && echo "         and EXTRA_HARBOR_ARGS=\"--cpus ignore\""
+  if (( threads < 8 )); then echo "         and EXTRA_HARBOR_ARGS=\"--cpus ignore\""; fi
+  exit 0  # explicit: phase0.sh relies on this exit code
 else
   echo "Verdict: fix the FAIL lines above first (or use the cloud VM in PLAN.md section 6)."
   exit 1
